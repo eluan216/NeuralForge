@@ -1,46 +1,21 @@
 # NeuralForge
 
-**High-Performance AI Inference Engine** written in modern C++20.
+**A C++20 CPU inference runtime with a real PyTorch-to-C++ model pipeline.**
 
-NeuralForge is a lightweight CPU inference runtime that loads trained machine learning models, executes predictions efficiently, and provides measurable performance optimizations. It is designed as a portfolio-grade engineering project demonstrating systems programming + ML infrastructure skills relevant to FAANG ML Systems / Inference / Performance Engineering roles.
+NeuralForge demonstrates tensor ownership, matrix multiplication, neural-network primitives, model parameter serialization, inference, and numerical validation against a PyTorch reference. It is an engineering learning project; performance claims should only be made after reproducible benchmarks.
 
-> Goal: Show that you understand both *how a model makes predictions* and *how to make those predictions fast, reliable, and production-ready*.
+## Current capabilities
 
-## Features (Roadmap)
+- Core tensor abstraction with value semantics and shape overflow checks
+- Baseline row-major matrix multiplication
+- Dense, ReLU, and numerically stable row-wise Softmax
+- Versioned `NEURALFORGE_MLP 1` model file format
+- C++ loader and prediction runner for Dense → ReLU → Dense → Softmax
+- PyTorch training/export script and C++/PyTorch numerical parity checker
 
-- [x] Core tensor abstraction and matrix multiplication (Weeks 1–2)
-- [x] Dense layer, ReLU, numerically stable softmax + inference primitives (Phase 1)
-- [ ] Load and run a small neural network trained in PyTorch (Weeks 3–4)
-- [ ] Batching, multithreading, memory reuse, and optimized kernels (Weeks 5–6)
-- [ ] HTTP prediction API + Docker + CI + benchmarks (Weeks 7–8)
+## Quick start
 
-## Architecture (High Level)
-
-```
-Python (PyTorch) ──train──► model weights (ONNX / custom)
-                                 │
-                                 ▼
-                    Model Loader (C++)
-                                 │
-                                 ▼
-              NeuralForge Inference Engine
-              (Tensors · MatMul · Dense · ReLU · Softmax)
-                                 │
-                    ┌────────────┴────────────┐
-                    ▼                         ▼
-               Optimizer                  Benchmarks
-            (batch / threads)          (latency / throughput)
-                    │
-                    ▼
-              Prediction API
-```
-
-## Quick Start
-
-### Prerequisites
-- CMake ≥ 3.20
-- C++20 compiler (GCC 11+, Clang 14+, or MSVC 2022)
-- GoogleTest & Google Benchmark (fetched automatically via CMake)
+Build the C++ engine:
 
 ```bash
 git clone https://github.com/eluan216/NeuralForge.git
@@ -48,63 +23,81 @@ cd NeuralForge
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 ctest --test-dir build --output-on-failure
-./build/bin/neuralforge_demo
-./build/bin/neuralforge_inference_demo
-./build/bin/neuralforge_bench
 ```
 
-## Project Structure
+Use the included sample model immediately:
+
+```bash
+./build/bin/neuralforge_model_runner models/toy_classifier.nfmodel
+./build/bin/neuralforge_model_runner models/toy_classifier.nfmodel -2.0 -1.5
+```
+
+Train a fresh model (requires Python 3.10+ and `python -m pip install torch`):
+
+```bash
+python python/train_export.py --output models/toy_classifier.nfmodel
+python python/validate_parity.py models/toy_classifier.nfmodel build/bin/neuralforge_model_runner
+```
+
+The parity checker compares five samples against a PyTorch reference at an absolute tolerance of `2e-5`.
+
+## Architecture
+
+```
+Python / PyTorch training → versioned .nfmodel file → C++ MLPModel loader
+    → Tensor / MatMul / Dense / ReLU / Softmax → class probabilities
+```
+
+## Model file format v1
+
+Whitespace-separated text:
+
+1. `NEURALFORGE_MLP 1`
+2. `input_features hidden_features output_features`
+3. `W1` flattened row-major `(input, hidden)`
+4. `b1`
+5. `W2` flattened row-major `(hidden, output)`
+6. `b2`
+
+Export transposes PyTorch `Linear.weight` so C++ dense matches row-major layout.
+
+## Project structure
 
 ```
 NeuralForge/
-├── CMakeLists.txt
-├── README.md
-├── .gitignore
 ├── include/neuralforge/
-│   ├── tensor.hpp          # Core Tensor (value semantics)
-│   └── nn_ops.hpp          # dense, relu, softmax_rows
+│   ├── tensor.hpp
+│   ├── nn_ops.hpp
+│   └── model.hpp
 ├── src/
-│   ├── tensor.cpp
-│   ├── matmul.cpp
-│   └── nn_ops.cpp
+│   ├── tensor.cpp, matmul.cpp, nn_ops.cpp, model.cpp
+├── apps/
+│   ├── main.cpp, inference_demo.cpp, model_runner.cpp
+├── python/
+│   ├── train_export.py
+│   └── validate_parity.py
+├── models/
+│   └── toy_classifier.nfmodel
 ├── tests/
-│   ├── test_tensor.cpp
-│   └── test_inference.cpp
-├── benchmarks/
-│   └── bench_matmul.cpp
-└── apps/
-    ├── main.cpp                 # MatMul demo
-    └── inference_demo.cpp       # Dense + Softmax demo
+└── benchmarks/
 ```
 
-## Phase 1 Highlights
+## Roadmap
 
-- **Value-semantic Tensor** – independent storage on copy; overflow-safe shape sizing.
-- **`dense`** – batch matrix-multiply + bias.
-- **`relu`** – element-wise max(0, x).
-- **`softmax_rows`** – numerically stable row-wise softmax (handles large logits).
-- Full unit-test coverage for the new primitives.
+| Phase | Status |
+|-------|--------|
+| Tensor + MatMul + tests | ✅ |
+| Dense / ReLU / Softmax | ✅ |
+| PyTorch train → export → C++ inference + parity | ✅ |
+| Batching, threads, measured optimizations | Next |
+| REST API, Docker, CI | Later |
 
-## Development Roadmap
+## Limitations
 
-| Weeks | Focus |
-|-------|-------|
-| 1–2   | C++ foundations, Tensor, MatMul, unit tests, baseline benchmarks |
-| Phase 1 | Dense / ReLU / Softmax + hardened Tensor |
-| 3–4   | Train small classifier in PyTorch → export → pure-C++ inference |
-| 5–6   | Batching, threads, memory pools, profiling & measurable gains |
-| 7–8   | REST API, Docker, GitHub Actions, docs, demo video |
-
-## Correctness & Performance Philosophy
-
-- Every numerical result is compared against a trusted reference (PyTorch / ONNX Runtime) within a defined tolerance.
-- All performance claims are backed by reproducible Google Benchmark results on the same hardware.
-- No invented numbers. Modest, measured improvements are preferred over marketing claims.
+- Fixed architecture: Dense → ReLU → Dense → Softmax
+- No ONNX yet (explicit format keeps layout auditable)
+- CPU-only baseline matmul
 
 ## License
 
 MIT
-
----
-
-Built as a genuine engineering project — not a demo that cannot be defended in an interview.
