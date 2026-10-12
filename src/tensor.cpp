@@ -1,5 +1,6 @@
 #include "neuralforge/tensor.hpp"
 
+#include <algorithm>
 #include <numeric>
 #include <sstream>
 
@@ -24,8 +25,8 @@ Tensor::Tensor(std::initializer_list<std::initializer_list<value_type>> rows) {
     if (rows.size() == 0) {
         return;
     }
-    const size_type n_rows = rows.size();
-    const size_type n_cols = rows.begin()->size();
+    const size_type n_rows = static_cast<size_type>(rows.size());
+    const size_type n_cols = static_cast<size_type>(rows.begin()->size());
 
     for (const auto& row : rows) {
         if (row.size() != n_cols) {
@@ -48,7 +49,7 @@ Tensor::Tensor(std::initializer_list<std::initializer_list<value_type>> rows) {
 // Private helpers
 // ---------------------------------------------------------------------------
 
-size_type Tensor::compute_size() const {
+Tensor::size_type Tensor::compute_size() const {
     if (shape_.empty()) return 0;
     return std::accumulate(shape_.begin(), shape_.end(), size_type{1}, std::multiplies<>());
 }
