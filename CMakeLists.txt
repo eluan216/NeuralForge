@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(NeuralForge VERSION 0.5.0 LANGUAGES CXX)
+project(NeuralForge VERSION 0.5.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -60,6 +60,7 @@ if(NEURALFORGE_BUILD_TESTS)
         tests/test_inference.cpp
         tests/test_model.cpp
         tests/test_matmul_blocked.cpp
+        tests/test_reliability.cpp
     )
     target_link_libraries(neuralforge_tests PRIVATE neuralforge GTest::gtest_main)
     target_compile_definitions(neuralforge_tests PRIVATE
