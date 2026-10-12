@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(NeuralForge VERSION 0.5.1 LANGUAGES CXX)
+project(NeuralForge VERSION 0.6.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -42,6 +42,9 @@ target_link_libraries(neuralforge_inference_demo PRIVATE neuralforge)
 
 add_executable(neuralforge_model_runner apps/model_runner.cpp)
 target_link_libraries(neuralforge_model_runner PRIVATE neuralforge)
+
+add_executable(neuralforge_eval_accuracy apps/eval_accuracy.cpp)
+target_link_libraries(neuralforge_eval_accuracy PRIVATE neuralforge)
 
 if(NEURALFORGE_BUILD_TESTS)
     include(FetchContent)
