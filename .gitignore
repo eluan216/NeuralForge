@@ -1,0 +1,37 @@
+# Build
+build/
+out/
+cmake-build-*/
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Models / data (keep small examples)
+*.onnx
+*.pt
+*.pth
+data/
+models/
+!models/.gitkeep
+
+# Coverage / profiling
+*.gcda
+*.gcno
+*.profraw
+*.profdata
