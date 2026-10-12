@@ -7,18 +7,16 @@ NeuralForge demonstrates tensor ownership, matrix multiplication, neural-network
 ## Current capabilities
 
 - Core tensor abstraction with value semantics and shape overflow checks
-- Baseline row-major matrix multiplication
+- **Cache-blocked matmul** (default) with naive kernel retained for A/B measurement
 - Dense, ReLU, and numerically stable row-wise Softmax
 - Versioned `NEURALFORGE_MLP 1` model file format
 - C++ loader and prediction runner for Dense → ReLU → Dense → Softmax
-- PyTorch training/export with stratified train/validation split and dual accuracy metrics
+- PyTorch training/export with stratified train/validation split
 - C++/PyTorch numerical parity checker
 - GitHub Actions CI (GCC + Clang) with pinned FetchContent dependencies
-- **Baseline performance benchmarks** for matmul and inference (sizes × batch × repetitions + env metadata)
+- Google Benchmark suites for matmul (naive vs blocked) and inference latency
 
 ## Quick start
-
-Build the C++ engine:
 
 ```bash
 git clone https://github.com/eluan216/NeuralForge.git
@@ -28,85 +26,45 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
-Use the included sample model immediately:
+### Matmul A/B benchmarks
 
 ```bash
-./build/bin/neuralforge_model_runner models/toy_classifier.nfmodel
-./build/bin/neuralforge_model_runner models/toy_classifier.nfmodel -2.0 -1.5
+./build/bin/neuralforge_bench --benchmark_filter='MatMul/(Naive|Blocked)/Square' \
+  --benchmark_repetitions=5 --benchmark_min_time=0.2s --benchmark_report_aggregates_only=true
 ```
 
-### Baseline benchmarks (before optimizations)
+Or use the full baseline script:
 
 ```bash
-# Build with benchmarks (default ON)
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DNEURALFORGE_BUILD_BENCHMARKS=ON
-cmake --build build -j
-
-# One-shot: records compiler, hardware, build flags, and repeated-run stats
 chmod +x scripts/run_baselines.sh
-./scripts/run_baselines.sh                  # default: 5 repetitions, 0.2s min time
-./scripts/run_baselines.sh --repetitions 10
+./scripts/run_baselines.sh --repetitions 5
 ```
 
-Results land in `benchmarks/results/baseline_<UTC-timestamp>/`:
+## Phase 4 — measured matmul optimization
 
-| File | Contents |
-|------|----------|
-| `env.txt` | CPU model, cores, memory, compiler version, CMake cache flags, repetition settings |
-| `matmul.json` / `matmul.txt` | Square (16…512) and rectangular matmul latency + FLOP rate |
-| `inference.json` / `inference.txt` | `predict_proba` / `predict` latency for batch sizes 1…512 |
+| Size | Naive (CPU mean) | Blocked 64 (CPU mean) | Speedup |
+|------|------------------|------------------------|---------|
+| 64×64 | ~55 µs | ~34 µs | **~1.6×** |
+| 128×128 | ~391 µs | ~270 µs | **~1.4×** |
+| 256×256 | ~3.2 ms | ~2.7 ms | **~1.2×** |
+| 512×512 | ~24.5 ms | ~24.0 ms | ~1.0× (noise) |
 
-Google Benchmark reports mean / median / stddev across repetitions. These numbers are the **unoptimized baseline** against which future kernel changes must be compared.
+**Machine:** Intel Xeon Platinum 8481C @ 2.70 GHz, 2 cores, L1D 48 KiB, g++ 13.3 `-O3 -DNDEBUG`, 5 repetitions.
 
-Train a fresh model (requires Python 3.10+ and `python -m pip install torch`):
-
-```bash
-python python/train_export.py --output models/toy_classifier.nfmodel
-python python/validate_parity.py models/toy_classifier.nfmodel build/bin/neuralforge_model_runner
-```
+- Default `matmul()` uses **cache-blocked** tiling (`block_size=64`).
+- `matmul_naive()` is kept for correctness tests and fair comparison.
+- Numerical agreement is tested on random square/rectangular shapes within abs/rel tolerance `1e-4`.
+- **SIMD and multithreading were not added** — measurements show clear gains from blocking at mid sizes, but 512×512 and the tiny MLP panels (2×16, 16×3) do not yet justify the complexity. Those come next only if profiling shows a bottleneck.
 
 ## Continuous integration
 
-Every push and pull request to `main` runs `.github/workflows/ci.yml`:
-
-- **Matrix:** GCC 13 and Clang 18 on Ubuntu 24.04
-- **Steps:** configure (Ninja) → build → `ctest` → model-runner and demo smoke tests
-- **Dependencies:** GoogleTest and Google Benchmark at **pinned commit SHAs**
+Every push and PR to `main` runs GCC 13 + Clang 18 builds, the full test suite (41 cases), and smoke demos.
 
 ## Architecture
 
 ```
 Python / PyTorch training → versioned .nfmodel file → C++ MLPModel loader
-    → Tensor / MatMul / Dense / ReLU / Softmax → class probabilities
-```
-
-## Model file format v1
-
-Whitespace-separated text:
-
-1. `NEURALFORGE_MLP 1`
-2. `input_features hidden_features output_features`
-3. `W1` flattened row-major `(input, hidden)`
-4. `b1`
-5. `W2` flattened row-major `(hidden, output)`
-6. `b2`
-
-## Project structure
-
-```
-NeuralForge/
-├── .github/workflows/ci.yml
-├── scripts/run_baselines.sh
-├── benchmarks/
-│   ├── bench_matmul.cpp
-│   ├── bench_inference.cpp
-│   └── results/
-├── include/neuralforge/
-├── src/
-├── apps/
-├── python/
-├── models/
-└── tests/
+    → Tensor / MatMul (blocked) / Dense / ReLU / Softmax → class probabilities
 ```
 
 ## Roadmap
@@ -117,16 +75,11 @@ NeuralForge/
 | Dense / ReLU / Softmax | ✅ |
 | PyTorch train → export → C++ inference + parity | ✅ |
 | Model-loader tests + train/val evaluation | ✅ |
-| GitHub Actions CI (reproducible deps) | ✅ |
-| Baseline matmul + inference benchmarks | ✅ |
-| Measured optimizations (blocked/SIMD/threads) | Next |
+| GitHub Actions CI | ✅ |
+| Baseline benchmarks | ✅ |
+| Cache-blocked matmul (measured) | ✅ |
+| SIMD / threads (only if justified) | Deferred |
 | REST API, Docker | Later |
-
-## Limitations
-
-- Fixed architecture: Dense → ReLU → Dense → Softmax
-- No ONNX yet (explicit format keeps layout auditable)
-- CPU-only **baseline** triple-loop matmul (intentionally unoptimized until measured)
 
 ## License
 
