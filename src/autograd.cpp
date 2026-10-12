@@ -43,7 +43,6 @@ Tensor elementwise_add(const Tensor& a, const Tensor& b) {
         for (std::size_t i = 0; i < a.size(); ++i) out.at(i) = a.at(i) + b.at(i);
         return out;
     }
-    // (M, N) + (N,) row-wise bias broadcast
     if (a.ndim() == 2 && b.ndim() == 1 && a.shape()[1] == b.shape()[0]) {
         Tensor out(a.shape());
         const auto M = a.shape()[0];
@@ -62,7 +61,6 @@ Tensor elementwise_add(const Tensor& a, const Tensor& b) {
 }
 
 Tensor reduce_bias_grad(const Tensor& gy, std::size_t bias_len) {
-    // gy is (M, N), bias is (N,) → sum over rows
     if (gy.ndim() != 2 || gy.shape()[1] != bias_len) {
         throw std::invalid_argument("reduce_bias_grad shape mismatch");
     }
@@ -91,8 +89,8 @@ Variable make_from_op(Tensor data,
     auto node = std::make_shared<Variable::Node>();
     node->inputs = std::move(inputs);
     node->backward = std::move(backward_fn);
-    out.impl_->is_leaf = false;
-    out.impl_->grad_fn = std::move(node);
+    out.impl()->is_leaf = false;
+    out.impl()->grad_fn = std::move(node);
     return out;
 }
 
@@ -141,89 +139,62 @@ void Variable::backward() {
         throw std::invalid_argument("backward() requires a scalar output");
     }
 
-    // Seed ∂L/∂output = 1
     Tensor seed(impl_->data.shape(), 1.0f);
     accumulate_grad(*impl_, seed);
 
-    // Build reverse-topological order of nodes reachable from this output.
     std::vector<std::shared_ptr<Node>> order;
     std::unordered_set<const Node*> seen;
 
-    std::function<void(const std::shared_ptr<Node>&)> dfs = [&](const std::shared_ptr<Node>& n) {
-        if (!n || seen.count(n.get())) return;
-        seen.insert(n.get());
-        for (const auto& inp : n->inputs) {
-            if (inp && inp->grad_fn) dfs(inp->grad_fn);
-        }
-        order.push_back(n);
-    };
+    std::function<void(const std::shared_ptr<Node>&)> dfs =
+        [&](const std::shared_ptr<Node>& n) {
+            if (!n || seen.count(n.get())) return;
+            seen.insert(n.get());
+            for (const auto& inp : n->inputs) {
+                if (inp && inp->grad_fn) dfs(inp->grad_fn);
+            }
+            order.push_back(n);
+        };
     if (impl_->grad_fn) dfs(impl_->grad_fn);
 
-    // order is post-order (inputs before consumers). Reverse → consumers first.
+    // Post-order then reverse → consumers before producers.
     for (auto it = order.rbegin(); it != order.rend(); ++it) {
-        Node& node = **it;
-        // Find the output impl that owns this grad_fn — we stored grad on each
-        // intermediate Variable's Impl. Walk inputs' consumers is awkward;
-        // instead each node closes over the output impl shared_ptr.
-        // We re-bind: backward lambdas capture everything they need and only
-        // need the output gradient, which we look up by scanning…
-        //
-        // Simpler approach used below: each backward_fn is created to read
-        // grad from a captured output Impl pointer.
-        // Those lambdas expect the output grad to already be populated.
-        // So we need the output Impl for this node. Store it on the node.
-    }
-
-    // Re-run with nodes that capture output impl — see op implementations.
-    // The dfs order is correct; each node's backward reads its output's grad
-    // via a captured shared_ptr<Impl> named `self`.
-    for (auto it = order.rbegin(); it != order.rend(); ++it) {
-        (*it)->backward(Tensor{});  // placeholder unused; real grad read inside lambda
+        (*it)->backward(Tensor{});
     }
 }
 
-// ---------------------------------------------------------------------------
-// Ops
-// ---------------------------------------------------------------------------
-
 Variable matmul(const Variable& a, const Variable& b) {
-    if (!a.impl_ || !b.impl_) throw std::invalid_argument("matmul on empty Variable");
+    if (a.empty() || b.empty()) throw std::invalid_argument("matmul on empty Variable");
     Tensor result = neuralforge::matmul(a.data(), b.data());
 
-    auto a_impl = a.impl_;
-    auto b_impl = b.impl_;
-    // Output impl created inside make_from_op — capture after creation.
+    auto a_impl = a.impl();
+    auto b_impl = b.impl();
     auto out_holder = std::make_shared<std::shared_ptr<Variable::Impl>>();
 
     Variable out = make_from_op(
         std::move(result),
         {a_impl, b_impl},
-        [a_impl, b_impl, out_holder](const Tensor& /*unused*/) {
+        [a_impl, b_impl, out_holder](const Tensor&) {
             const Tensor& gy = (*out_holder)->grad;
             if (gy.size() == 0) return;
             if (a_impl->requires_grad) {
-                // dA = gy @ B^T
                 Tensor Bt = transpose_2d(b_impl->data);
-                Tensor dA = neuralforge::matmul(gy, Bt);
-                accumulate_grad(*a_impl, dA);
+                accumulate_grad(*a_impl, neuralforge::matmul(gy, Bt));
             }
             if (b_impl->requires_grad) {
-                // dB = A^T @ gy
                 Tensor At = transpose_2d(a_impl->data);
-                Tensor dB = neuralforge::matmul(At, gy);
-                accumulate_grad(*b_impl, dB);
+                accumulate_grad(*b_impl, neuralforge::matmul(At, gy));
             }
         });
-    *out_holder = out.impl_;
+    *out_holder = out.impl();
     return out;
 }
 
 Variable add(const Variable& a, const Variable& b) {
-    if (!a.impl_ || !b.impl_) throw std::invalid_argument("add on empty Variable");
+    if (a.empty() || b.empty()) throw std::invalid_argument("add on empty Variable");
     Tensor result = elementwise_add(a.data(), b.data());
 
-    auto a_impl = a.impl_;
-    auto b_impl = b.impl_;
+    auto a_impl = a.impl();
+    auto b_impl = b.impl();
     const bool a_is_bias = (a.data().ndim() == 1 && b.data().ndim() == 2);
     const bool b_is_bias = (b.data().ndim() == 1 && a.data().ndim() == 2);
     auto out_holder = std::make_shared<std::shared_ptr<Variable::Impl>>();
@@ -231,7 +202,7 @@ Variable add(const Variable& a, const Variable& b) {
     Variable out = make_from_op(
         std::move(result),
         {a_impl, b_impl},
-        [a_impl, b_impl, a_is_bias, b_is_bias, out_holder](const Tensor& /*unused*/) {
+        [a_impl, b_impl, a_is_bias, b_is_bias, out_holder](const Tensor&) {
             const Tensor& gy = (*out_holder)->grad;
             if (gy.size() == 0) return;
             if (a_impl->requires_grad) {
@@ -253,23 +224,23 @@ Variable add(const Variable& a, const Variable& b) {
                 }
             }
         });
-    *out_holder = out.impl_;
+    *out_holder = out.impl();
     return out;
 }
 
 Variable relu(const Variable& x) {
-    if (!x.impl_) throw std::invalid_argument("relu on empty Variable");
+    if (x.empty()) throw std::invalid_argument("relu on empty Variable");
     Tensor result(x.data().shape());
     for (std::size_t i = 0; i < x.data().size(); ++i) {
         result.at(i) = std::max(0.0f, x.data().at(i));
     }
-    auto x_impl = x.impl_;
+    auto x_impl = x.impl();
     auto out_holder = std::make_shared<std::shared_ptr<Variable::Impl>>();
 
     Variable out = make_from_op(
         std::move(result),
         {x_impl},
-        [x_impl, out_holder](const Tensor& /*unused*/) {
+        [x_impl, out_holder](const Tensor&) {
             const Tensor& gy = (*out_holder)->grad;
             if (gy.size() == 0 || !x_impl->requires_grad) return;
             Tensor dx(x_impl->data.shape(), 0.0f);
@@ -278,41 +249,37 @@ Variable relu(const Variable& x) {
             }
             accumulate_grad(*x_impl, dx);
         });
-    *out_holder = out.impl_;
+    *out_holder = out.impl();
     return out;
 }
 
 Variable sum(const Variable& x) {
-    if (!x.impl_) throw std::invalid_argument("sum on empty Variable");
+    if (x.empty()) throw std::invalid_argument("sum on empty Variable");
     float total = 0.0f;
     for (std::size_t i = 0; i < x.data().size(); ++i) total += x.data().at(i);
     Tensor result({1}, total);
 
-    auto x_impl = x.impl_;
+    auto x_impl = x.impl();
     auto out_holder = std::make_shared<std::shared_ptr<Variable::Impl>>();
 
     Variable out = make_from_op(
         std::move(result),
         {x_impl},
-        [x_impl, out_holder](const Tensor& /*unused*/) {
+        [x_impl, out_holder](const Tensor&) {
             const Tensor& gy = (*out_holder)->grad;
             if (gy.size() == 0 || !x_impl->requires_grad) return;
             const float scale = gy.at(0);
             Tensor dx(x_impl->data.shape(), scale);
             accumulate_grad(*x_impl, dx);
         });
-    *out_holder = out.impl_;
+    *out_holder = out.impl();
     return out;
 }
-
-// ---------------------------------------------------------------------------
-// Finite differences
-// ---------------------------------------------------------------------------
 
 Tensor finite_difference_grad(const Variable& leaf,
                               const std::function<Variable(const Variable&)>& scalar_fn,
                               float eps) {
-    if (!leaf.impl_) throw std::invalid_argument("finite_difference_grad: empty leaf");
+    if (leaf.empty()) throw std::invalid_argument("finite_difference_grad: empty leaf");
     Tensor grad(leaf.data().shape(), 0.0f);
     Tensor base = leaf.data();
 
