@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel in-progress runs of the same workflow on the same ref.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build & Test (${{ matrix.compiler }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - compiler: gcc
+            cc: gcc-13
+            cxx: g++-13
+          - compiler: clang
+            cc: clang-18
+            cxx: clang++-18
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build \
+            ${{ matrix.cc }} ${{ matrix.cxx }}
+
+      - name: Configure
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DNEURALFORGE_BUILD_TESTS=ON \
+            -DNEURALFORGE_BUILD_BENCHMARKS=ON \
+            -DFETCHCONTENT_QUIET=OFF
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure --parallel
+
+      - name: Smoke — model runner
+        run: |
+          ./build/bin/neuralforge_model_runner models/toy_classifier.nfmodel
+          ./build/bin/neuralforge_model_runner models/toy_classifier.nfmodel -2.0 -1.5
+
+      - name: Smoke — demos
+        run: |
+          ./build/bin/neuralforge_demo
+          ./build/bin/neuralforge_inference_demo
