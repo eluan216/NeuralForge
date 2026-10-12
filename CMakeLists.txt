@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(NeuralForge VERSION 0.6.1 LANGUAGES CXX)
+project(NeuralForge VERSION 0.7.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -21,6 +21,7 @@ add_library(neuralforge
     src/matmul.cpp
     src/nn_ops.cpp
     src/model.cpp
+    src/autograd.cpp
 )
 
 target_include_directories(neuralforge
@@ -64,6 +65,7 @@ if(NEURALFORGE_BUILD_TESTS)
         tests/test_model.cpp
         tests/test_matmul_blocked.cpp
         tests/test_reliability.cpp
+        tests/test_autograd.cpp
     )
     target_link_libraries(neuralforge_tests PRIVATE neuralforge GTest::gtest_main)
     target_compile_definitions(neuralforge_tests PRIVATE
@@ -72,7 +74,6 @@ if(NEURALFORGE_BUILD_TESTS)
     include(GoogleTest)
     gtest_discover_tests(neuralforge_tests)
 
-    # Dataset-validation regression for the accuracy evaluator CLI.
     add_test(
         NAME EvalDatasetValidation
         COMMAND bash "${CMAKE_SOURCE_DIR}/tests/test_eval_dataset.sh"
