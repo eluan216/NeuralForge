@@ -7,14 +7,14 @@ NeuralForge demonstrates tensor ownership, matrix multiplication, neural-network
 ## Current capabilities
 
 - Core tensor abstraction with value semantics and shape overflow checks
-- **Cache-blocked matmul** (default) with naive kernel retained for A/B measurement
+- **Cache-blocked matmul** (`Ijk` tile order, default `block_size=64`) with naive kernel for A/B checks
 - Dense, ReLU, and numerically stable row-wise Softmax
 - Versioned `NEURALFORGE_MLP 1` model file format
 - C++ loader and prediction runner for Dense → ReLU → Dense → Softmax
 - PyTorch training/export with stratified train/validation split
 - C++/PyTorch numerical parity checker
 - GitHub Actions CI (GCC + Clang) with pinned FetchContent dependencies
-- Google Benchmark suites for matmul (naive vs blocked) and inference latency
+- Google Benchmark suites (naive vs blocked, tile order, **block-size sweep**)
 
 ## Quick start
 
@@ -23,48 +23,42 @@ git clone https://github.com/eluan216/NeuralForge.git
 cd NeuralForge
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
-ctest --test-dir build --output-on-failure
+ctest --test-dir build --output-on-failure   # correctness
 ```
 
-### Matmul A/B benchmarks
+Performance is a **separate** step from `ctest`:
 
 ```bash
-./build/bin/neuralforge_bench --benchmark_filter='MatMul/(Naive|Blocked)/Square' \
-  --benchmark_repetitions=5 --benchmark_min_time=0.2s --benchmark_report_aggregates_only=true
+./build/bin/neuralforge_bench \
+  --benchmark_filter='MatMul/Blocked/Ijk/(Square|Rect)' \
+  --benchmark_repetitions=5 --benchmark_min_time=0.15s \
+  --benchmark_report_aggregates_only=true
 ```
 
-Or use the full baseline script:
+## Phase 5 — block-size tuning (summary)
 
-```bash
-chmod +x scripts/run_baselines.sh
-./scripts/run_baselines.sh --repetitions 5
-```
+Sweep of tile sizes **16 / 32 / 64 / 128** with `MatMulTileOrder::Ijk` on square and rectangular shapes (5 repetitions, Release, g++ 13.3).
 
-## Phase 4 — measured matmul optimization
+| Finding | Detail |
+|---------|--------|
+| Best general tile | **64** on all square sizes and most rectangular shapes |
+| Worst | 16 (consistent) |
+| 128 | Only competitive when the problem already fits one tile |
+| Default change? | **No** — keep `block_size=64` and `Ijk` |
 
-| Size | Naive (CPU mean) | Blocked 64 (CPU mean) | Speedup |
-|------|------------------|------------------------|---------|
-| 64×64 | ~55 µs | ~34 µs | **~1.6×** |
-| 128×128 | ~391 µs | ~270 µs | **~1.4×** |
-| 256×256 | ~3.2 ms | ~2.7 ms | **~1.2×** |
-| 512×512 | ~24.5 ms | ~24.0 ms | ~1.0× (noise) |
+Full table and methodology: [`benchmarks/results/phase5_block_size.md`](benchmarks/results/phase5_block_size.md).
 
-**Machine:** Intel Xeon Platinum 8481C @ 2.70 GHz, 2 cores, L1D 48 KiB, g++ 13.3 `-O3 -DNDEBUG`, 5 repetitions.
-
-- Default `matmul()` uses **cache-blocked** tiling (`block_size=64`).
-- `matmul_naive()` is kept for correctness tests and fair comparison.
-- Numerical agreement is tested on random square/rectangular shapes within abs/rel tolerance `1e-4`.
-- **SIMD and multithreading were not added** — measurements show clear gains from blocking at mid sizes, but 512×512 and the tiny MLP panels (2×16, 16×3) do not yet justify the complexity. Those come next only if profiling shows a bottleneck.
+Numbers are from one measurement host; reproduce before treating them as authoritative.
 
 ## Continuous integration
 
-Every push and PR to `main` runs GCC 13 + Clang 18 builds, the full test suite (41 cases), and smoke demos.
+Every push and PR to `main` runs GCC 13 + Clang 18 builds, the unit test suite, and smoke demos. CI validates **correctness**, not benchmark rankings.
 
 ## Architecture
 
 ```
 Python / PyTorch training → versioned .nfmodel file → C++ MLPModel loader
-    → Tensor / MatMul (blocked) / Dense / ReLU / Softmax → class probabilities
+    → Tensor / MatMul (blocked Ijk, tile 64) / Dense / ReLU / Softmax → class probabilities
 ```
 
 ## Roadmap
@@ -77,7 +71,8 @@ Python / PyTorch training → versioned .nfmodel file → C++ MLPModel loader
 | Model-loader tests + train/val evaluation | ✅ |
 | GitHub Actions CI | ✅ |
 | Baseline benchmarks | ✅ |
-| Cache-blocked matmul (measured) | ✅ |
+| Cache-blocked matmul + tile-order A/B | ✅ |
+| Block-size tuning (default 64 retained) | ✅ |
 | SIMD / threads (only if justified) | Deferred |
 | REST API, Docker | Later |
 
