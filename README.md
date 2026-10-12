@@ -13,6 +13,7 @@ NeuralForge demonstrates tensor ownership, matrix multiplication, neural-network
 - C++ loader and prediction runner for Dense → ReLU → Dense → Softmax
 - PyTorch training/export with stratified train/validation split and dual accuracy metrics
 - C++/PyTorch numerical parity checker
+- GitHub Actions CI (GCC + Clang) with pinned FetchContent dependencies
 
 ## Quick start
 
@@ -42,6 +43,14 @@ python python/validate_parity.py models/toy_classifier.nfmodel build/bin/neuralf
 
 The trainer holds out a stratified validation set (default 20% per class) and prints both `training_accuracy` and `validation_accuracy`. The parity checker compares five samples against a PyTorch reference at an absolute tolerance of `2e-5`.
 
+## Continuous integration
+
+Every push and pull request to `main` runs `.github/workflows/ci.yml`:
+
+- **Matrix:** GCC 13 and Clang 18 on Ubuntu 24.04
+- **Steps:** configure (Ninja) → build → `ctest` → model-runner and demo smoke tests
+- **Dependencies:** GoogleTest and Google Benchmark are fetched at **pinned commit SHAs** (not floating tags) so clean CI builds stay reproducible
+
 ## Architecture
 
 ```
@@ -66,17 +75,15 @@ Export transposes PyTorch `Linear.weight` so C++ dense matches row-major layout.
 
 ```
 NeuralForge/
+├── .github/workflows/ci.yml
 ├── include/neuralforge/
-│   ├── tensor.hpp
-│   ├── nn_ops.hpp
-│   └── model.hpp
+│   ├── tensor.hpp, nn_ops.hpp, model.hpp
 ├── src/
 │   ├── tensor.cpp, matmul.cpp, nn_ops.cpp, model.cpp
 ├── apps/
 │   ├── main.cpp, inference_demo.cpp, model_runner.cpp
 ├── python/
-│   ├── train_export.py
-│   └── validate_parity.py
+│   ├── train_export.py, validate_parity.py
 ├── models/
 │   └── toy_classifier.nfmodel
 ├── tests/
@@ -91,8 +98,9 @@ NeuralForge/
 | Dense / ReLU / Softmax | ✅ |
 | PyTorch train → export → C++ inference + parity | ✅ |
 | Model-loader tests + train/val evaluation | ✅ |
+| GitHub Actions CI (reproducible deps) | ✅ |
 | Batching, threads, measured optimizations | Next |
-| REST API, Docker, CI | Later |
+| REST API, Docker | Later |
 
 ## Limitations
 
