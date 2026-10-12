@@ -53,6 +53,15 @@ private:
     void check_rank(size_type expected) const;
 };
 
-Tensor matmul(const Tensor& a, const Tensor& b);
+/// Triple-loop baseline (i-k-j). Kept for correctness checks and A/B benchmarks.
+[[nodiscard]] Tensor matmul_naive(const Tensor& a, const Tensor& b);
+
+/// Cache-blocked matmul (default production path via matmul).
+/// block_size tiles the (M,K,N) loops to improve L1/L2 reuse.
+[[nodiscard]] Tensor matmul_blocked(const Tensor& a, const Tensor& b,
+                                    std::size_t block_size = 64);
+
+/// Default matmul: currently delegates to matmul_blocked.
+[[nodiscard]] Tensor matmul(const Tensor& a, const Tensor& b);
 
 } // namespace neuralforge
