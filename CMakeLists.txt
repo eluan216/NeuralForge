@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(NeuralForge VERSION 0.3.1 LANGUAGES CXX)
+project(NeuralForge VERSION 0.3.2 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -12,6 +12,14 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 option(NEURALFORGE_BUILD_TESTS "Build unit tests" ON)
 option(NEURALFORGE_BUILD_BENCHMARKS "Build benchmarks" ON)
+
+# ---------------------------------------------------------------------------
+# Pinned third-party revisions (commit SHAs, not floating tags).
+# GoogleTest  v1.14.0  → f8d7d77c06936315286eb55f8de22cd23c188571
+# Benchmark   v1.8.3   → 344117638c8ff7e239044fd0fa7085839fc03021
+# ---------------------------------------------------------------------------
+set(NEURALFORGE_GTEST_GIT_TAG      "f8d7d77c06936315286eb55f8de22cd23c188571" CACHE STRING "GoogleTest git revision")
+set(NEURALFORGE_BENCHMARK_GIT_TAG  "344117638c8ff7e239044fd0fa7085839fc03021" CACHE STRING "Google Benchmark git revision")
 
 add_library(neuralforge
     src/tensor.cpp
@@ -45,7 +53,8 @@ if(NEURALFORGE_BUILD_TESTS)
     FetchContent_Declare(
         googletest
         GIT_REPOSITORY https://github.com/google/googletest.git
-        GIT_TAG        v1.14.0
+        GIT_TAG        ${NEURALFORGE_GTEST_GIT_TAG}
+        GIT_SHALLOW    TRUE
     )
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(googletest)
@@ -70,7 +79,8 @@ if(NEURALFORGE_BUILD_BENCHMARKS)
     FetchContent_Declare(
         googlebenchmark
         GIT_REPOSITORY https://github.com/google/benchmark.git
-        GIT_TAG        v1.8.3
+        GIT_TAG        ${NEURALFORGE_BENCHMARK_GIT_TAG}
+        GIT_SHALLOW    TRUE
     )
     set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(googlebenchmark)
