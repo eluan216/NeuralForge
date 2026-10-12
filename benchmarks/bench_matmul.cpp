@@ -6,11 +6,43 @@
 
 using namespace neuralforge;
 
-// ---------------------------------------------------------------------------
-// Square matmul: C = A @ B with A, B ∈ R^{N×N}
-// Baseline triple-loop kernel — measure before any optimization.
-// ---------------------------------------------------------------------------
-static void BM_MatMul_Square(benchmark::State& state) {
+static void BM_MatMul_Naive_Square(benchmark::State& state) {
+    const std::size_t N = static_cast<std::size_t>(state.range(0));
+    auto A = Tensor::ones({N, N});
+    auto B = Tensor::ones({N, N});
+
+    for (auto _ : state) {
+        auto C = matmul_naive(A, B);
+        benchmark::DoNotOptimize(C.data());
+        benchmark::ClobberMemory();
+    }
+
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()));
+    state.counters["N"] = static_cast<double>(N);
+    state.counters["FLOPs"] = benchmark::Counter(
+        static_cast<double>(2ull * N * N * N),
+        benchmark::Counter::kIsIterationInvariantRate);
+}
+
+static void BM_MatMul_Blocked_Square(benchmark::State& state) {
+    const std::size_t N = static_cast<std::size_t>(state.range(0));
+    auto A = Tensor::ones({N, N});
+    auto B = Tensor::ones({N, N});
+
+    for (auto _ : state) {
+        auto C = matmul_blocked(A, B, 64);
+        benchmark::DoNotOptimize(C.data());
+        benchmark::ClobberMemory();
+    }
+
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()));
+    state.counters["N"] = static_cast<double>(N);
+    state.counters["FLOPs"] = benchmark::Counter(
+        static_cast<double>(2ull * N * N * N),
+        benchmark::Counter::kIsIterationInvariantRate);
+}
+
+static void BM_MatMul_Default_Square(benchmark::State& state) {
     const std::size_t N = static_cast<std::size_t>(state.range(0));
     auto A = Tensor::ones({N, N});
     auto B = Tensor::ones({N, N});
@@ -26,22 +58,18 @@ static void BM_MatMul_Square(benchmark::State& state) {
     state.counters["FLOPs"] = benchmark::Counter(
         static_cast<double>(2ull * N * N * N),
         benchmark::Counter::kIsIterationInvariantRate);
-    state.SetComplexityN(static_cast<int64_t>(N));
 }
 
-// ---------------------------------------------------------------------------
-// Rectangular: A (M×K) @ B (K×N)
-// Ranges: range(0)=M, range(1)=K, range(2)=N
-// ---------------------------------------------------------------------------
-static void BM_MatMul_Rectangular(benchmark::State& state) {
+static void BM_MatMul_Rect(benchmark::State& state) {
     const std::size_t M = static_cast<std::size_t>(state.range(0));
     const std::size_t K = static_cast<std::size_t>(state.range(1));
     const std::size_t N = static_cast<std::size_t>(state.range(2));
+    const bool use_blocked = state.range(3) != 0;
     auto A = Tensor::ones({M, K});
     auto B = Tensor::ones({K, N});
 
     for (auto _ : state) {
-        auto C = matmul(A, B);
+        auto C = use_blocked ? matmul_blocked(A, B, 64) : matmul_naive(A, B);
         benchmark::DoNotOptimize(C.data());
         benchmark::ClobberMemory();
     }
@@ -55,27 +83,32 @@ static void BM_MatMul_Rectangular(benchmark::State& state) {
         benchmark::Counter::kIsIterationInvariantRate);
 }
 
-BENCHMARK(BM_MatMul_Square)
-    ->Name("MatMul/Square")
-    ->Arg(16)
-    ->Arg(32)
-    ->Arg(64)
-    ->Arg(128)
-    ->Arg(256)
-    ->Arg(512)
-    ->Unit(benchmark::kMicrosecond)
-    ->Complexity(benchmark::oNCubed);
+BENCHMARK(BM_MatMul_Naive_Square)
+    ->Name("MatMul/Naive/Square")
+    ->Arg(64)->Arg(128)->Arg(256)->Arg(512)
+    ->Unit(benchmark::kMicrosecond);
 
-// Typical MLP-shaped products: (batch × in) @ (in × out)
-BENCHMARK(BM_MatMul_Rectangular)
-    ->Name("MatMul/Rect")
-    ->Args({1, 16, 3})       // single-sample toy classifier dense
-    ->Args({8, 16, 3})
-    ->Args({32, 16, 3})
-    ->Args({128, 16, 3})
-    ->Args({1, 256, 256})
-    ->Args({32, 256, 256})
-    ->Args({64, 512, 512})
+BENCHMARK(BM_MatMul_Blocked_Square)
+    ->Name("MatMul/Blocked/Square")
+    ->Arg(64)->Arg(128)->Arg(256)->Arg(512)
+    ->Unit(benchmark::kMicrosecond);
+
+BENCHMARK(BM_MatMul_Default_Square)
+    ->Name("MatMul/Default/Square")
+    ->Arg(64)->Arg(128)->Arg(256)->Arg(512)
+    ->Unit(benchmark::kMicrosecond);
+
+// Args: M, K, N, blocked(1)/naive(0)
+BENCHMARK(BM_MatMul_Rect)
+    ->Name("MatMul/Naive/Rect")
+    ->Args({32, 256, 256, 0})
+    ->Args({64, 512, 512, 0})
+    ->Unit(benchmark::kMicrosecond);
+
+BENCHMARK(BM_MatMul_Rect)
+    ->Name("MatMul/Blocked/Rect")
+    ->Args({32, 256, 256, 1})
+    ->Args({64, 512, 512, 1})
     ->Unit(benchmark::kMicrosecond);
 
 BENCHMARK_MAIN();
