@@ -9,6 +9,7 @@ NeuralForge is a lightweight CPU inference runtime that loads trained machine le
 ## Features (Roadmap)
 
 - [x] Core tensor abstraction and matrix multiplication (Weeks 1–2)
+- [x] Dense layer, ReLU, numerically stable softmax + inference primitives (Phase 1)
 - [ ] Load and run a small neural network trained in PyTorch (Weeks 3–4)
 - [ ] Batching, multithreading, memory reuse, and optimized kernels (Weeks 5–6)
 - [ ] HTTP prediction API + Docker + CI + benchmarks (Weeks 7–8)
@@ -23,7 +24,7 @@ Python (PyTorch) ──train──► model weights (ONNX / custom)
                                  │
                                  ▼
               NeuralForge Inference Engine
-              (Tensors · MatMul · Graph)
+              (Tensors · MatMul · Dense · ReLU · Softmax)
                                  │
                     ┌────────────┴────────────┐
                     ▼                         ▼
@@ -44,11 +45,12 @@ Python (PyTorch) ──train──► model weights (ONNX / custom)
 ```bash
 git clone https://github.com/eluan216/NeuralForge.git
 cd NeuralForge
-mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-cmake --build . -j
-ctest --output-on-failure
-./bin/neuralforge_bench   # simple matrix-multiply benchmark
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
+ctest --test-dir build --output-on-failure
+./build/bin/neuralforge_demo
+./build/bin/neuralforge_inference_demo
+./build/bin/neuralforge_bench
 ```
 
 ## Project Structure
@@ -59,23 +61,36 @@ NeuralForge/
 ├── README.md
 ├── .gitignore
 ├── include/neuralforge/
-│   └── tensor.hpp          # Core Tensor class
+│   ├── tensor.hpp          # Core Tensor (value semantics)
+│   └── nn_ops.hpp          # dense, relu, softmax_rows
 ├── src/
 │   ├── tensor.cpp
-│   └── matmul.cpp          # Optimized matrix multiplication
+│   ├── matmul.cpp
+│   └── nn_ops.cpp
 ├── tests/
-│   └── test_tensor.cpp
+│   ├── test_tensor.cpp
+│   └── test_inference.cpp
 ├── benchmarks/
 │   └── bench_matmul.cpp
 └── apps/
-    └── main.cpp            # Simple demo
+    ├── main.cpp                 # MatMul demo
+    └── inference_demo.cpp       # Dense + Softmax demo
 ```
+
+## Phase 1 Highlights
+
+- **Value-semantic Tensor** – independent storage on copy; overflow-safe shape sizing.
+- **`dense`** – batch matrix-multiply + bias.
+- **`relu`** – element-wise max(0, x).
+- **`softmax_rows`** – numerically stable row-wise softmax (handles large logits).
+- Full unit-test coverage for the new primitives.
 
 ## Development Roadmap
 
 | Weeks | Focus |
 |-------|-------|
 | 1–2   | C++ foundations, Tensor, MatMul, unit tests, baseline benchmarks |
+| Phase 1 | Dense / ReLU / Softmax + hardened Tensor |
 | 3–4   | Train small classifier in PyTorch → export → pure-C++ inference |
 | 5–6   | Batching, threads, memory pools, profiling & measurable gains |
 | 7–8   | REST API, Docker, GitHub Actions, docs, demo video |
