@@ -14,6 +14,7 @@ NeuralForge demonstrates tensor ownership, matrix multiplication, neural-network
 - PyTorch training/export with stratified train/validation split and dual accuracy metrics
 - C++/PyTorch numerical parity checker
 - GitHub Actions CI (GCC + Clang) with pinned FetchContent dependencies
+- **Baseline performance benchmarks** for matmul and inference (sizes × batch × repetitions + env metadata)
 
 ## Quick start
 
@@ -34,6 +35,29 @@ Use the included sample model immediately:
 ./build/bin/neuralforge_model_runner models/toy_classifier.nfmodel -2.0 -1.5
 ```
 
+### Baseline benchmarks (before optimizations)
+
+```bash
+# Build with benchmarks (default ON)
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DNEURALFORGE_BUILD_BENCHMARKS=ON
+cmake --build build -j
+
+# One-shot: records compiler, hardware, build flags, and repeated-run stats
+chmod +x scripts/run_baselines.sh
+./scripts/run_baselines.sh                  # default: 5 repetitions, 0.2s min time
+./scripts/run_baselines.sh --repetitions 10
+```
+
+Results land in `benchmarks/results/baseline_<UTC-timestamp>/`:
+
+| File | Contents |
+|------|----------|
+| `env.txt` | CPU model, cores, memory, compiler version, CMake cache flags, repetition settings |
+| `matmul.json` / `matmul.txt` | Square (16…512) and rectangular matmul latency + FLOP rate |
+| `inference.json` / `inference.txt` | `predict_proba` / `predict` latency for batch sizes 1…512 |
+
+Google Benchmark reports mean / median / stddev across repetitions. These numbers are the **unoptimized baseline** against which future kernel changes must be compared.
+
 Train a fresh model (requires Python 3.10+ and `python -m pip install torch`):
 
 ```bash
@@ -41,15 +65,13 @@ python python/train_export.py --output models/toy_classifier.nfmodel
 python python/validate_parity.py models/toy_classifier.nfmodel build/bin/neuralforge_model_runner
 ```
 
-The trainer holds out a stratified validation set (default 20% per class) and prints both `training_accuracy` and `validation_accuracy`. The parity checker compares five samples against a PyTorch reference at an absolute tolerance of `2e-5`.
-
 ## Continuous integration
 
 Every push and pull request to `main` runs `.github/workflows/ci.yml`:
 
 - **Matrix:** GCC 13 and Clang 18 on Ubuntu 24.04
 - **Steps:** configure (Ninja) → build → `ctest` → model-runner and demo smoke tests
-- **Dependencies:** GoogleTest and Google Benchmark are fetched at **pinned commit SHAs** (not floating tags) so clean CI builds stay reproducible
+- **Dependencies:** GoogleTest and Google Benchmark at **pinned commit SHAs**
 
 ## Architecture
 
@@ -69,25 +91,22 @@ Whitespace-separated text:
 5. `W2` flattened row-major `(hidden, output)`
 6. `b2`
 
-Export transposes PyTorch `Linear.weight` so C++ dense matches row-major layout.
-
 ## Project structure
 
 ```
 NeuralForge/
 ├── .github/workflows/ci.yml
+├── scripts/run_baselines.sh
+├── benchmarks/
+│   ├── bench_matmul.cpp
+│   ├── bench_inference.cpp
+│   └── results/
 ├── include/neuralforge/
-│   ├── tensor.hpp, nn_ops.hpp, model.hpp
 ├── src/
-│   ├── tensor.cpp, matmul.cpp, nn_ops.cpp, model.cpp
 ├── apps/
-│   ├── main.cpp, inference_demo.cpp, model_runner.cpp
 ├── python/
-│   ├── train_export.py, validate_parity.py
 ├── models/
-│   └── toy_classifier.nfmodel
-├── tests/
-└── benchmarks/
+└── tests/
 ```
 
 ## Roadmap
@@ -99,14 +118,15 @@ NeuralForge/
 | PyTorch train → export → C++ inference + parity | ✅ |
 | Model-loader tests + train/val evaluation | ✅ |
 | GitHub Actions CI (reproducible deps) | ✅ |
-| Batching, threads, measured optimizations | Next |
+| Baseline matmul + inference benchmarks | ✅ |
+| Measured optimizations (blocked/SIMD/threads) | Next |
 | REST API, Docker | Later |
 
 ## Limitations
 
 - Fixed architecture: Dense → ReLU → Dense → Softmax
 - No ONNX yet (explicit format keeps layout auditable)
-- CPU-only baseline matmul
+- CPU-only **baseline** triple-loop matmul (intentionally unoptimized until measured)
 
 ## License
 
