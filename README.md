@@ -7,14 +7,14 @@ NeuralForge demonstrates tensor ownership, matrix multiplication, neural-network
 ## Current capabilities
 
 - Core tensor abstraction with value semantics and shape overflow checks
-- **Cache-blocked matmul** (`Ijk` tile order, default `block_size=64`) with naive kernel for A/B checks
+- Cache-blocked matmul (`Ijk`, default `block_size=64`) with naive kernel for A/B checks
 - Dense, ReLU, and numerically stable row-wise Softmax
-- Versioned `NEURALFORGE_MLP 1` model file format
-- C++ loader and prediction runner for Dense → ReLU → Dense → Softmax
+- Versioned `NEURALFORGE_MLP 1` model file format with load-time resource limits
+- C++ loader, prediction runner, and **held-out accuracy evaluator**
 - PyTorch training/export with stratified train/validation split
 - C++/PyTorch numerical parity checker
+- **Evaluation suite** — accuracy (PyTorch vs C++), parity, batch latency/throughput
 - GitHub Actions CI (GCC + Clang) with pinned FetchContent dependencies
-- Google Benchmark suites (naive vs blocked, tile order, **block-size sweep**)
 
 ## Quick start
 
@@ -23,32 +23,29 @@ git clone https://github.com/eluan216/NeuralForge.git
 cd NeuralForge
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
-ctest --test-dir build --output-on-failure   # correctness
+ctest --test-dir build --output-on-failure   # correctness (not performance)
 ```
 
-Performance is a **separate** step from `ctest`:
+### Inference evaluation suite
 
 ```bash
-./build/bin/neuralforge_bench \
-  --benchmark_filter='MatMul/Blocked/Ijk/(Square|Rect)' \
-  --benchmark_repetitions=5 --benchmark_min_time=0.15s \
-  --benchmark_report_aggregates_only=true
+python python/eval_suite.py --model models/toy_classifier.nfmodel
+# optional: retrain with a fixed seed, then evaluate
+python python/eval_suite.py --model models/toy_classifier.nfmodel --retrain --seed 42
 ```
 
-## Phase 5 — block-size tuning (summary)
+Reports:
 
-Sweep of tile sizes **16 / 32 / 64 / 128** with `MatMulTileOrder::Ijk` on square and rectangular shapes (5 repetitions, Release, g++ 13.3).
+1. **Held-out accuracy** — same weights, same validation set, PyTorch vs `neuralforge_eval_accuracy`
+2. **Numerical parity** — max absolute error on probe samples (tolerance `2e-5`)
+3. **Latency / throughput** — `Inference/PredictProba` across batch sizes (Google Benchmark)
 
-| Finding | Detail |
-|---------|--------|
-| Best general tile | **64** on all square sizes and most rectangular shapes |
-| Worst | 16 (consistent) |
-| 128 | Only competitive when the problem already fits one tile |
-| Default change? | **No** — keep `block_size=64` and `Ijk` |
+Standalone C++ accuracy tool:
 
-Full table and methodology: [`benchmarks/results/phase5_block_size.md`](benchmarks/results/phase5_block_size.md).
-
-Numbers are from one measurement host; reproduce before treating them as authoritative.
+```bash
+./build/bin/neuralforge_eval_accuracy models/toy_classifier.nfmodel path/to/val_set.txt
+# val_set.txt: first line `n_samples n_features`, then `x0 … xF-1 label` per row
+```
 
 ## Continuous integration
 
@@ -68,11 +65,10 @@ Python / PyTorch training → versioned .nfmodel file → C++ MLPModel loader
 | Tensor + MatMul + tests | ✅ |
 | Dense / ReLU / Softmax | ✅ |
 | PyTorch train → export → C++ inference + parity | ✅ |
-| Model-loader tests + train/val evaluation | ✅ |
+| Model-loader tests + reliability hardening | ✅ |
 | GitHub Actions CI | ✅ |
-| Baseline benchmarks | ✅ |
-| Cache-blocked matmul + tile-order A/B | ✅ |
-| Block-size tuning (default 64 retained) | ✅ |
+| Cache-blocked matmul + block-size tuning | ✅ |
+| Inference evaluation suite | ✅ |
 | SIMD / threads (only if justified) | Deferred |
 | REST API, Docker | Later |
 
