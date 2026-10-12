@@ -11,7 +11,8 @@ NeuralForge demonstrates tensor ownership, matrix multiplication, neural-network
 - Dense, ReLU, and numerically stable row-wise Softmax
 - Versioned `NEURALFORGE_MLP 1` model file format
 - C++ loader and prediction runner for Dense → ReLU → Dense → Softmax
-- PyTorch training/export script and C++/PyTorch numerical parity checker
+- PyTorch training/export with stratified train/validation split and dual accuracy metrics
+- C++/PyTorch numerical parity checker
 
 ## Quick start
 
@@ -39,7 +40,7 @@ python python/train_export.py --output models/toy_classifier.nfmodel
 python python/validate_parity.py models/toy_classifier.nfmodel build/bin/neuralforge_model_runner
 ```
 
-The parity checker compares five samples against a PyTorch reference at an absolute tolerance of `2e-5`.
+The trainer holds out a stratified validation set (default 20% per class) and prints both `training_accuracy` and `validation_accuracy`. The parity checker compares five samples against a PyTorch reference at an absolute tolerance of `2e-5`.
 
 ## Architecture
 
@@ -89,6 +90,7 @@ NeuralForge/
 | Tensor + MatMul + tests | ✅ |
 | Dense / ReLU / Softmax | ✅ |
 | PyTorch train → export → C++ inference + parity | ✅ |
+| Model-loader tests + train/val evaluation | ✅ |
 | Batching, threads, measured optimizations | Next |
 | REST API, Docker, CI | Later |
 
