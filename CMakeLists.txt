@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(NeuralForge VERSION 0.4.0 LANGUAGES CXX)
+project(NeuralForge VERSION 0.5.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -13,11 +13,6 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 option(NEURALFORGE_BUILD_TESTS "Build unit tests" ON)
 option(NEURALFORGE_BUILD_BENCHMARKS "Build benchmarks" ON)
 
-# ---------------------------------------------------------------------------
-# Pinned third-party revisions (commit SHAs, not floating tags).
-# GoogleTest  v1.14.0  → f8d7d77c06936315286eb55f8de22cd23c188571
-# Benchmark   v1.8.3   → 344117638c8ff7e239044fd0fa7085839fc03021
-# ---------------------------------------------------------------------------
 set(NEURALFORGE_GTEST_GIT_TAG      "f8d7d77c06936315286eb55f8de22cd23c188571" CACHE STRING "GoogleTest git revision")
 set(NEURALFORGE_BENCHMARK_GIT_TAG  "344117638c8ff7e239044fd0fa7085839fc03021" CACHE STRING "Google Benchmark git revision")
 
@@ -64,6 +59,7 @@ if(NEURALFORGE_BUILD_TESTS)
         tests/test_tensor.cpp
         tests/test_inference.cpp
         tests/test_model.cpp
+        tests/test_matmul_blocked.cpp
     )
     target_link_libraries(neuralforge_tests PRIVATE neuralforge GTest::gtest_main)
     target_compile_definitions(neuralforge_tests PRIVATE
