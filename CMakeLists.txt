@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(NeuralForge VERSION 0.7.0 LANGUAGES CXX)
+project(NeuralForge VERSION 0.8.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -22,6 +22,9 @@ add_library(neuralforge
     src/nn_ops.cpp
     src/model.cpp
     src/autograd.cpp
+    src/loss.cpp
+    src/optim.cpp
+    src/export_model.cpp
 )
 
 target_include_directories(neuralforge
@@ -66,6 +69,7 @@ if(NEURALFORGE_BUILD_TESTS)
         tests/test_matmul_blocked.cpp
         tests/test_reliability.cpp
         tests/test_autograd.cpp
+        tests/test_training.cpp
     )
     target_link_libraries(neuralforge_tests PRIVATE neuralforge GTest::gtest_main)
     target_compile_definitions(neuralforge_tests PRIVATE
