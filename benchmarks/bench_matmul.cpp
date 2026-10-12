@@ -24,13 +24,14 @@ static void BM_MatMul_Naive_Square(benchmark::State& state) {
         benchmark::Counter::kIsIterationInvariantRate);
 }
 
-static void BM_MatMul_Blocked_Square(benchmark::State& state) {
+static void BM_MatMul_Blocked_Order(benchmark::State& state) {
     const std::size_t N = static_cast<std::size_t>(state.range(0));
+    const auto order = state.range(1) == 0 ? MatMulTileOrder::Ikj : MatMulTileOrder::Ijk;
     auto A = Tensor::ones({N, N});
     auto B = Tensor::ones({N, N});
 
     for (auto _ : state) {
-        auto C = matmul_blocked(A, B, 64);
+        auto C = matmul_blocked(A, B, 64, order);
         benchmark::DoNotOptimize(C.data());
         benchmark::ClobberMemory();
     }
@@ -60,16 +61,16 @@ static void BM_MatMul_Default_Square(benchmark::State& state) {
         benchmark::Counter::kIsIterationInvariantRate);
 }
 
-static void BM_MatMul_Rect(benchmark::State& state) {
+static void BM_MatMul_Rect_Order(benchmark::State& state) {
     const std::size_t M = static_cast<std::size_t>(state.range(0));
     const std::size_t K = static_cast<std::size_t>(state.range(1));
     const std::size_t N = static_cast<std::size_t>(state.range(2));
-    const bool use_blocked = state.range(3) != 0;
+    const auto order = state.range(3) == 0 ? MatMulTileOrder::Ikj : MatMulTileOrder::Ijk;
     auto A = Tensor::ones({M, K});
     auto B = Tensor::ones({K, N});
 
     for (auto _ : state) {
-        auto C = use_blocked ? matmul_blocked(A, B, 64) : matmul_naive(A, B);
+        auto C = matmul_blocked(A, B, 64, order);
         benchmark::DoNotOptimize(C.data());
         benchmark::ClobberMemory();
     }
@@ -88,9 +89,15 @@ BENCHMARK(BM_MatMul_Naive_Square)
     ->Arg(64)->Arg(128)->Arg(256)->Arg(512)
     ->Unit(benchmark::kMicrosecond);
 
-BENCHMARK(BM_MatMul_Blocked_Square)
-    ->Name("MatMul/Blocked/Square")
-    ->Arg(64)->Arg(128)->Arg(256)->Arg(512)
+// range(0)=N, range(1)=0 Ikj / 1 Ijk
+BENCHMARK(BM_MatMul_Blocked_Order)
+    ->Name("MatMul/Blocked/Ikj/Square")
+    ->Args({64, 0})->Args({128, 0})->Args({256, 0})->Args({512, 0})
+    ->Unit(benchmark::kMicrosecond);
+
+BENCHMARK(BM_MatMul_Blocked_Order)
+    ->Name("MatMul/Blocked/Ijk/Square")
+    ->Args({64, 1})->Args({128, 1})->Args({256, 1})->Args({512, 1})
     ->Unit(benchmark::kMicrosecond);
 
 BENCHMARK(BM_MatMul_Default_Square)
@@ -98,15 +105,15 @@ BENCHMARK(BM_MatMul_Default_Square)
     ->Arg(64)->Arg(128)->Arg(256)->Arg(512)
     ->Unit(benchmark::kMicrosecond);
 
-// Args: M, K, N, blocked(1)/naive(0)
-BENCHMARK(BM_MatMul_Rect)
-    ->Name("MatMul/Naive/Rect")
+// Args: M, K, N, order(0=Ikj, 1=Ijk)
+BENCHMARK(BM_MatMul_Rect_Order)
+    ->Name("MatMul/Blocked/Ikj/Rect")
     ->Args({32, 256, 256, 0})
     ->Args({64, 512, 512, 0})
     ->Unit(benchmark::kMicrosecond);
 
-BENCHMARK(BM_MatMul_Rect)
-    ->Name("MatMul/Blocked/Rect")
+BENCHMARK(BM_MatMul_Rect_Order)
+    ->Name("MatMul/Blocked/Ijk/Rect")
     ->Args({32, 256, 256, 1})
     ->Args({64, 512, 512, 1})
     ->Unit(benchmark::kMicrosecond);
