@@ -1,6 +1,7 @@
 #include "neuralforge/tensor.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -19,6 +20,42 @@ void validate_matmul_shapes(const Tensor& a, const Tensor& b,
     if (K != K2) {
         throw std::invalid_argument("matmul shape mismatch");
     }
+}
+
+// Multiply a*b into out. Returns false if the product would overflow size_t.
+[[nodiscard]] bool checked_mul(std::size_t a, std::size_t b, std::size_t& out) noexcept {
+    if (a != 0 && b > std::numeric_limits<std::size_t>::max() / a) {
+        return false;
+    }
+    out = a * b;
+    return true;
+}
+
+// True iff M*K*N < block_size^3 without overflowing intermediate products.
+// On overflow of the left-hand volume, the problem is treated as large (false).
+// On overflow of the right-hand threshold, the threshold is treated as infinite (true
+// only when the left-hand volume is finite — which it is if we reach the compare).
+[[nodiscard]] bool volume_below_block_cube(std::size_t M, std::size_t K, std::size_t N,
+                                           std::size_t block_size) noexcept {
+    std::size_t mk = 0;
+    if (!checked_mul(M, K, mk)) {
+        return false;  // M*K already overflows → volume is huge
+    }
+    std::size_t volume = 0;
+    if (!checked_mul(mk, N, volume)) {
+        return false;  // M*K*N overflows → volume is huge
+    }
+
+    std::size_t bb = 0;
+    if (!checked_mul(block_size, block_size, bb)) {
+        // block_size^2 overflows → block_size^3 is even larger than any finite volume
+        return true;
+    }
+    std::size_t threshold = 0;
+    if (!checked_mul(bb, block_size, threshold)) {
+        return true;  // block_size^3 overflows → threshold is huge
+    }
+    return volume < threshold;
 }
 
 } // namespace
@@ -53,7 +90,8 @@ Tensor matmul_blocked(const Tensor& a, const Tensor& b, std::size_t block_size) 
     }
 
     // Small products: blocking overhead is not worth it; use the tight naive loop.
-    if (M * K * N < block_size * block_size * block_size) {
+    // Comparison is overflow-safe (see volume_below_block_cube).
+    if (volume_below_block_cube(M, K, N, block_size)) {
         return matmul_naive(a, b);
     }
 
