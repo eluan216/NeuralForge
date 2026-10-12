@@ -22,12 +22,13 @@ __pycache__/
 venv/
 env/
 
-# Models / data (keep small examples)
+# Models / data (keep small .nfmodel examples)
 *.onnx
 *.pt
 *.pth
 data/
-models/
+models/*
+!models/*.nfmodel
 !models/.gitkeep
 
 # Coverage / profiling
