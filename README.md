@@ -1,17 +1,14 @@
 # NeuralForge
 
-**A C++20 CPU inference runtime with a growing training stack (autograd) and a PyTorch export pipeline.**
+**A C++20 CPU inference runtime with reverse-mode autograd and a first training loop.**
 
 ## Current capabilities
 
-- Core tensor abstraction with value semantics and shape overflow checks
-- Cache-blocked matmul (`Ijk`, default `block_size=64`)
-- Dense, ReLU, and numerically stable row-wise Softmax
-- Versioned `NEURALFORGE_MLP 1` model format with load-time resource limits
-- C++ loader, prediction runner, held-out accuracy evaluator
-- PyTorch training/export + numerical parity checker
-- Evaluation suite (accuracy, per-example agreement, parity, latency)
-- **Reverse-mode autograd** — `Variable` graph with `matmul`, `add` (bias broadcast), `relu`, `sum`; gradients checked against finite differences
+- Tensor + cache-blocked matmul, Dense / ReLU / Softmax
+- Versioned `.nfmodel` load path with resource limits
+- PyTorch export + parity + evaluation suite
+- **Reverse-mode autograd** (`Variable`, matmul / add / relu / sum)
+- **Training primitives**: MSE loss, SGD, `.nfmodel` export from trained weights
 - GitHub Actions CI (GCC + Clang)
 
 ## Quick start
@@ -24,41 +21,39 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
-### Autograd (Phase 4B)
+### Training (Phase 4C)
 
 ```cpp
 #include "neuralforge/autograd.hpp"
-using namespace neuralforge;
+#include "neuralforge/loss.hpp"
+#include "neuralforge/optim.hpp"
+#include "neuralforge/export_model.hpp"
 
-Variable x(Tensor{{0.2f, -0.3f}}, true);       // requires_grad
-Variable W(Tensor{{0.1f, 0.4f}, {-0.2f, 0.5f}}, true);
-Variable b(Tensor{{0.05f, -0.1f}}, true);
+Variable W(/* ... */, true), b(Tensor::zeros({out}), true);
+SGD opt(0.05f);
+std::vector<Variable> params{W, b};
 
-auto y = sum(relu(add(matmul(x, W), b)));      // scalar loss
-y.backward();
-// W.grad(), b.grad(), x.grad() hold ∂y/∂param
+for (int epoch = 0; epoch < 200; ++epoch) {
+    auto pred = add(matmul(x, W), b);
+    auto loss = mse_loss(pred, y);   // scalar
+    opt.zero_grad(params);
+    loss.backward();
+    opt.step(params);
+}
+export_mlp_model("out.nfmodel", W1.data(), b1.data(), W2.data(), b2.data());
 ```
 
-Gradients for each op are validated in `tests/test_autograd.cpp` against central finite differences.
-
-### Evaluation suite
-
-```bash
-python python/eval_suite.py --model models/toy_classifier.nfmodel
-```
+Tests cover finite-difference MSE gradients, exact SGD updates, decreasing loss on linear regression, and export → `MLPModel::load`.
 
 ## Roadmap
 
 | Phase | Status |
 |-------|--------|
-| Tensor + MatMul + tests | ✅ |
-| Dense / ReLU / Softmax | ✅ |
-| PyTorch train → export → C++ inference + parity | ✅ |
-| Reliability + evaluation suite | ✅ |
-| Cache-blocked matmul + block-size tuning | ✅ |
-| Reverse-mode autograd (FD-validated) | ✅ |
-| Training primitives (loss, SGD/Adam) | Next |
-| End-to-end C++ training vs PyTorch | Later |
+| Inference stack + eval suite | ✅ |
+| Reverse-mode autograd | ✅ |
+| MSE + SGD + export training loop | ✅ |
+| Cross-entropy + Adam | Next |
+| End-to-end C++ train vs PyTorch classifier | Later |
 | SIMD / threads (profile-driven) | Deferred |
 
 ## License
