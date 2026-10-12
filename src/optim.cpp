@@ -11,8 +11,8 @@ SGD::SGD(float learning_rate) : lr_(learning_rate) {
     }
 }
 
-void SGD::step(const std::vector<Variable>& parameters) {
-    for (const Variable& p : parameters) {
+void SGD::step(std::vector<Variable>& parameters) {
+    for (Variable& p : parameters) {
         if (p.empty() || !p.requires_grad()) continue;
         if (p.grad().size() == 0) {
             throw std::runtime_error("SGD::step: parameter has empty gradient; call backward() first");
@@ -29,17 +29,14 @@ void SGD::step(const std::vector<Variable>& parameters) {
             if (!std::isfinite(updated)) {
                 throw std::runtime_error("SGD::step: non-finite parameter update");
             }
-            // Leaf parameters own their storage; mutate in place for the next forward.
-            const_cast<Tensor&>(p.data()).at(i) = updated;
+            p.data().at(i) = updated;
         }
     }
 }
 
-void SGD::zero_grad(const std::vector<Variable>& parameters) {
-    for (const Variable& p : parameters) {
-        if (!p.empty()) {
-            const_cast<Variable&>(p).zero_grad();
-        }
+void SGD::zero_grad(std::vector<Variable>& parameters) {
+    for (Variable& p : parameters) {
+        if (!p.empty()) p.zero_grad();
     }
 }
 
