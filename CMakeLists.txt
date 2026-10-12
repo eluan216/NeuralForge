@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(NeuralForge VERSION 0.6.0 LANGUAGES CXX)
+project(NeuralForge VERSION 0.6.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -71,6 +71,16 @@ if(NEURALFORGE_BUILD_TESTS)
     )
     include(GoogleTest)
     gtest_discover_tests(neuralforge_tests)
+
+    # Dataset-validation regression for the accuracy evaluator CLI.
+    add_test(
+        NAME EvalDatasetValidation
+        COMMAND bash "${CMAKE_SOURCE_DIR}/tests/test_eval_dataset.sh"
+    )
+    set_tests_properties(EvalDatasetValidation PROPERTIES
+        ENVIRONMENT "BUILD_DIR=${CMAKE_BINARY_DIR};MODEL=${CMAKE_SOURCE_DIR}/models/toy_classifier.nfmodel"
+        DEPENDS neuralforge_eval_accuracy
+    )
 endif()
 
 if(NEURALFORGE_BUILD_BENCHMARKS)
