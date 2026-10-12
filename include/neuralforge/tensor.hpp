@@ -53,13 +53,20 @@ private:
     void check_rank(size_type expected) const;
 };
 
+/// Outer tile traversal for cache-blocked matmul.
+enum class MatMulTileOrder {
+    Ikj,  ///< i0 → k0 → j0 (stream B panels; C tiles revisited)
+    Ijk,  ///< i0 → j0 → k0 (keep C tile resident while reducing over k)
+};
+
 /// Triple-loop baseline (i-k-j). Kept for correctness checks and A/B benchmarks.
 [[nodiscard]] Tensor matmul_naive(const Tensor& a, const Tensor& b);
 
 /// Cache-blocked matmul (default production path via matmul).
-/// block_size tiles the (M,K,N) loops to improve L1/L2 reuse.
+/// block_size tiles the (M,K,N) loops; order selects outer tile traversal.
 [[nodiscard]] Tensor matmul_blocked(const Tensor& a, const Tensor& b,
-                                    std::size_t block_size = 64);
+                                    std::size_t block_size = 64,
+                                    MatMulTileOrder order = MatMulTileOrder::Ijk);
 
 /// Default matmul: currently delegates to matmul_blocked.
 [[nodiscard]] Tensor matmul(const Tensor& a, const Tensor& b);
