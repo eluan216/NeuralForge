@@ -53,8 +53,10 @@ TEST(MatMulBlocked, MatchesNaiveRandomSquare) {
     for (std::size_t n : {1u, 3u, 7u, 16u, 33u, 64u, 65u}) {
         auto A = random_matrix(n, n, rng);
         auto B = random_matrix(n, n, rng);
-        expect_tensors_near(matmul_naive(A, B), matmul_blocked(A, B, 16));
-        expect_tensors_near(matmul_naive(A, B), matmul_blocked(A, B, 64));
+        expect_tensors_near(matmul_naive(A, B), matmul_blocked(A, B, 16, MatMulTileOrder::Ikj));
+        expect_tensors_near(matmul_naive(A, B), matmul_blocked(A, B, 16, MatMulTileOrder::Ijk));
+        expect_tensors_near(matmul_naive(A, B), matmul_blocked(A, B, 64, MatMulTileOrder::Ikj));
+        expect_tensors_near(matmul_naive(A, B), matmul_blocked(A, B, 64, MatMulTileOrder::Ijk));
     }
 }
 
@@ -65,12 +67,22 @@ TEST(MatMulBlocked, MatchesNaiveRandomRectangular) {
     for (const auto& [M, K, N] : shapes) {
         auto A = random_matrix(M, K, rng);
         auto B = random_matrix(K, N, rng);
-        expect_tensors_near(matmul_naive(A, B), matmul_blocked(A, B, 32));
+        expect_tensors_near(matmul_naive(A, B),
+                            matmul_blocked(A, B, 32, MatMulTileOrder::Ikj));
+        expect_tensors_near(matmul_naive(A, B),
+                            matmul_blocked(A, B, 32, MatMulTileOrder::Ijk));
     }
 }
 
+TEST(MatMulBlocked, BothOrdersAgree) {
+    std::mt19937 rng(123);
+    auto A = random_matrix(96, 80, rng);
+    auto B = random_matrix(80, 112, rng);
+    expect_tensors_near(matmul_blocked(A, B, 32, MatMulTileOrder::Ikj),
+                        matmul_blocked(A, B, 32, MatMulTileOrder::Ijk));
+}
+
 TEST(MatMulBlocked, DefaultMatmulUsesBlockedPath) {
-    // Public matmul() must stay numerically consistent with the blocked kernel.
     std::mt19937 rng(99);
     auto A = random_matrix(48, 48, rng);
     auto B = random_matrix(48, 48, rng);
