@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(NeuralForge VERSION 0.3.0 LANGUAGES CXX)
+project(NeuralForge VERSION 0.3.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -54,8 +54,13 @@ if(NEURALFORGE_BUILD_TESTS)
     add_executable(neuralforge_tests
         tests/test_tensor.cpp
         tests/test_inference.cpp
+        tests/test_model.cpp
     )
     target_link_libraries(neuralforge_tests PRIVATE neuralforge GTest::gtest_main)
+    # Allow tests to locate models/toy_classifier.nfmodel relative to the source tree.
+    target_compile_definitions(neuralforge_tests PRIVATE
+        NEURALFORGE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+    )
     include(GoogleTest)
     gtest_discover_tests(neuralforge_tests)
 endif()
