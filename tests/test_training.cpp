@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <filesystem>
+#include <limits>
 #include <vector>
 
 #include "neuralforge/autograd.hpp"
@@ -39,7 +40,6 @@ TEST(Training, MseGradientMatchesFiniteDifference) {
 }
 
 TEST(Training, MseKnownValue) {
-    // mean((1-3)^2 + (2-2)^2) = mean(4 + 0) = 2
     Variable pred(Tensor{{1.f, 2.f}}, true);
     Variable tgt(Tensor{{3.f, 2.f}}, false);
     auto loss = mse_loss(pred, tgt);
@@ -53,10 +53,7 @@ TEST(Training, SgdRejectsInvalidLearningRate) {
 }
 
 TEST(Training, SgdExactParameterUpdate) {
-    // θ=1, g=0.5, lr=0.1 → θ' = 1 - 0.05 = 0.95
-    Variable theta(Tensor{{1.0f}}, true);
-    theta.grad() = Tensor{{0.5f}};
-    // grad() returns ref but may be empty — set via zero_grad then assign
+    Variable theta(Tensor::full({1}, 1.0f), true);
     theta.zero_grad();
     theta.grad().at(0) = 0.5f;
 
@@ -67,7 +64,7 @@ TEST(Training, SgdExactParameterUpdate) {
 }
 
 TEST(Training, SgdRejectsNonFiniteGrad) {
-    Variable theta(Tensor{{1.0f}}, true);
+    Variable theta(Tensor::full({1}, 1.0f), true);
     theta.zero_grad();
     theta.grad().at(0) = std::numeric_limits<float>::quiet_NaN();
     std::vector<Variable> params{theta};
@@ -76,12 +73,10 @@ TEST(Training, SgdRejectsNonFiniteGrad) {
 }
 
 TEST(Training, TinyLinearRegressionLossDecreases) {
-    // Fit y ≈ 2x + 1 with a single linear layer (no hidden).
-    // pred = x @ W + b, W shape (1,1), b shape (1).
-    Variable W(Tensor{{0.0f}}, true);  // start far from 2
-    Variable b(Tensor{{0.0f}}, true);
+    // Fit y ≈ 2x + 1. W is (1×1), b is rank-1 (1,) for bias broadcast.
+    Variable W(Tensor{{0.0f}}, true);  // 1×1 matrix
+    Variable b(Tensor::zeros({1}), true);
 
-    // Dataset: x in {-1,0,1,2}, y = 2x+1
     const Tensor X{{-1.f}, {0.f}, {1.f}, {2.f}};
     const Tensor Y{{-1.f}, {1.f}, {3.f}, {5.f}};
 
@@ -99,16 +94,15 @@ TEST(Training, TinyLinearRegressionLossDecreases) {
         opt.step(params);
 
         const float L = loss.data().at(0);
+        if (epoch == 0) prev_loss = L;
         if (epoch > 0 && epoch % 50 == 0) {
             EXPECT_LT(L, prev_loss) << "epoch " << epoch;
             prev_loss = L;
         }
-        if (epoch == 0) prev_loss = L;
     }
 
     EXPECT_NEAR(W.data().at(0), 2.0f, 0.15f);
     EXPECT_NEAR(b.data().at(0), 1.0f, 0.15f);
-    // Final loss should be small
     Variable x(X, false);
     Variable y(Y, false);
     auto final_loss = mse_loss(add(matmul(x, W), b), y);
@@ -116,11 +110,10 @@ TEST(Training, TinyLinearRegressionLossDecreases) {
 }
 
 TEST(Training, TinyMlpExportLoadsInInference) {
-    // One hidden unit MLP on 2-D input → 1 output; train briefly, export, reload.
     Variable W1(Tensor{{0.3f, -0.2f}, {0.1f, 0.4f}}, true);  // 2×2
-    Variable b1(Tensor{{0.0f, 0.0f}}, true);
-    Variable W2(Tensor{{0.5f}, {-0.3f}}, true);  // 2×1
-    Variable b2(Tensor{{0.0f}}, true);
+    Variable b1(Tensor::zeros({2}), true);                     // rank-1
+    Variable W2(Tensor{{0.5f}, {-0.3f}}, true);               // 2×1
+    Variable b2(Tensor::zeros({1}), true);                     // rank-1
 
     const Tensor X{{0.5f, -0.5f}, {-0.5f, 0.5f}, {1.0f, 1.0f}, {-1.0f, -1.0f}};
     const Tensor Y{{0.2f}, {0.2f}, {1.0f}, {-1.0f}};
@@ -151,9 +144,7 @@ TEST(Training, TinyMlpExportLoadsInInference) {
     EXPECT_EQ(model.hidden_features(), 2u);
     EXPECT_EQ(model.output_features(), 1u);
 
-    // Inference path runs without throwing on a batch matching the training inputs.
-    Tensor batch = X;
-    auto probs = model.predict_proba(batch);
+    auto probs = model.predict_proba(X);
     EXPECT_EQ(probs.shape()[0], 4u);
     EXPECT_EQ(probs.shape()[1], 1u);
 
