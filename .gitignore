@@ -31,6 +31,9 @@ models/*
 !models/*.nfmodel
 !models/.gitkeep
 
+# Local benchmark dumps (commit curated summaries if needed)
+benchmarks/results/baseline_*/
+
 # Coverage / profiling
 *.gcda
 *.gcno
