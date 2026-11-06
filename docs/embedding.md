@@ -34,7 +34,20 @@ The rest of the binary does not require -march=native. Compilers may still auto-
 
 ## Install
 
-Use CMake install and the exported NeuralForge::neuralforge target. Disable tests and benchmarks to avoid their FetchContent dependencies. BUILD_SHARED_LIBS controls static/shared output. The installed consumer example is built and run in CI.
+From the repository root:
+
+```sh
+cmake -S . -B build-core -DCMAKE_BUILD_TYPE=Release \
+  -DNEURALFORGE_BUILD_TESTS=OFF -DNEURALFORGE_BUILD_BENCHMARKS=OFF
+cmake --build build-core --parallel 2
+cmake --install build-core --prefix "$PWD/install"
+
+cmake -S examples/embedding -B consumer -DCMAKE_PREFIX_PATH="$PWD/install"
+cmake --build consumer --parallel 2
+./consumer/embed models/toy_classifier.nfmodel
+```
+
+Use `find_package(NeuralForge CONFIG REQUIRED)` and link `NeuralForge::neuralforge`. Disabling tests and benchmarks avoids their FetchContent dependencies. `BUILD_SHARED_LIBS` controls static/shared output. The installed consumer example is built and run in CI.
 
 Supported execution evidence currently covers Linux x86-64 and hosted Linux ARM64. Standard-library filesystem use, dynamic loading and training allocations mean this is not a bare-metal microcontroller runtime.
 

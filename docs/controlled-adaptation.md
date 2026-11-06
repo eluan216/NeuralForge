@@ -12,7 +12,7 @@ Version 2 contains:
 
 Version 1 identity-only checkpoints remain readable. Version 2 standardizes raw batches using its stored statistics; resumed training does not refit them. `artifact()` preserves those same statistics and semantic names in a deployable inference bundle. Moments are rebound to new parameter identities on load. Checkpoints are capped at 16 MiB, 262,144 parameters and 4,096 elements per dimension. Names must be unique, nonempty and at most 128 characters. Invalid shapes, non-finite values, negative variances, unsupported formats and trailing data are rejected.
 
-A staged write is renamed into place. Supported POSIX filesystems provide atomic visibility; no fsync/power-loss durability or cryptographic authenticity is promised. Use trusted paths and synchronize writers. Snapshot files do not capture external preprocessing, data-loader/RNG state or application state; exact-resume tests use deterministic batches under the same build.
+A staged write is renamed into place. Supported POSIX filesystems provide atomic visibility; no fsync/power-loss durability or cryptographic authenticity is promised. Use trusted paths and synchronize writers. Checkpoints store the frozen standardization, but not upstream signal/feature extraction, data-loader/RNG state or application state; exact-resume tests use deterministic batches under the same build.
 
 Adam validates and stages all proposed parameter and moment updates before committing. Autograd output references are weak, preventing completed graphs from retaining their own outputs.
 

@@ -86,7 +86,7 @@ mkdir -p "$OUT_DIR"
   echo "matmul_bin=$MATMUL_BIN"
   echo "inference_bin=$INFER_BIN"
   echo "model_path=${NEURALFORGE_MODEL_PATH:-$REPO_ROOT/models/toy_classifier.nfmodel}"
-  echo "note=These are baseline measurements of the unoptimized triple-loop matmul and MLP forward path."
+  echo "note=These measurements cover the configured matmul benchmark variants and allocating MLP forward path; prepared native latency and cross-runtime comparisons are separate."
 } > "$OUT_DIR/env.txt"
 
 echo "Writing baseline results to $OUT_DIR"

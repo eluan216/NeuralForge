@@ -30,7 +30,24 @@ Shared CI hosts have scheduling/frequency noise and are not controlled hardware 
 
 ## Reproduce
 
-Follow the root README build-shared commands. The Parity and comparative evidence workflow publishes:
+From the repository root:
+
+```sh
+cmake -S . -B build-shared -DCMAKE_BUILD_TYPE=Release \
+  -DBUILD_SHARED_LIBS=ON \
+  -DNEURALFORGE_BUILD_TESTS=OFF -DNEURALFORGE_BUILD_BENCHMARKS=OFF
+cmake --build build-shared --parallel 2
+
+python -m pip install numpy onnx onnxruntime
+python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+python python/benchmark_compare.py \
+  --library build-shared/lib/libneuralforge.so \
+  --output artifacts/comparison.json
+```
+
+These commands target Linux; the Python dependencies are evaluation tooling, not deployed runtime requirements.
+
+The Parity and comparative evidence workflow publishes:
 - comparison.json and exact model/input fixtures
 - source-commit.txt and compiler.txt
 - native-latency.json

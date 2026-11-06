@@ -1,35 +1,45 @@
 # NeuralForge
 
 [![CI](https://github.com/eluan216/NeuralForge/actions/workflows/ci.yml/badge.svg)](https://github.com/eluan216/NeuralForge/actions/workflows/ci.yml)
-[![Comparative evidence](https://github.com/eluan216/NeuralForge/actions/workflows/verification.yml/badge.svg)](https://github.com/eluan216/NeuralForge/actions/workflows/verification.yml)
-[![Real sensor evidence](https://github.com/eluan216/NeuralForge/actions/workflows/sensor-evidence.yml/badge.svg)](https://github.com/eluan216/NeuralForge/actions/workflows/sensor-evidence.yml)
+[![Runtime comparisons](https://github.com/eluan216/NeuralForge/actions/workflows/verification.yml/badge.svg)](https://github.com/eluan216/NeuralForge/actions/workflows/verification.yml)
+[![Sensor evaluation](https://github.com/eluan216/NeuralForge/actions/workflows/sensor-evidence.yml/badge.svg)](https://github.com/eluan216/NeuralForge/actions/workflows/sensor-evidence.yml)
 [![MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **Small models. Local learning. Controlled updates.**
 
-I’m building NeuralForge for C++ applications that need to run small classifiers locally and evaluate model updates before accepting them. My focus is CPU-only Linux applications and edge gateways: an inspectable runtime, explicit memory ownership, resumable training, and a reversible update path.
+I’m **Oguma Eluanatein Odo**, and I’m building NeuralForge for applications that need small machine-learning models to run and learn locally.
 
-The core is **C++20**, with a **C11-compatible embedding API**. AVX2 and ARM NEON intrinsics accelerate the prepared inference path where supported. Python is used for export, parity verification and comparisons—not required by the deployed runtime.
+I want the path from a feature vector to a prediction to be understandable: who owns the memory, which CPU kernel runs, how a model is evaluated, and what happens when an update goes wrong. NeuralForge brings those concerns together in an inspectable **C++20 core**, a **C11-compatible API**, and command-line tools.
 
-> This is an early, deliberately narrow implementation: two-layer float32 MLP classifiers. The controlled-shift demo is synthetic; a separate participant-held-out benchmark uses recorded smartphone sensor features. I do not claim general ONNX compatibility, microcontroller readiness, hard real-time guarantees, or a performance advantage over other runtimes.
+My current focus is CPU-only Linux applications and edge gateways. Python supports data preparation, export and independent verification; deployed inference runs through the native library.
 
-## What makes this release useful
+[Quick start](#try-it-locally) · [Documentation](docs/README.md) · [Measured results](#the-evidence-i-publish) · [Contributing](CONTRIBUTING.md)
 
-| Capability | Current implementation |
+## Why I’m building it
+
+I’m interested in more than getting a model to produce a prediction. I want to keep its feature meanings and preprocessing intact, measure the resources it uses, resume training correctly, and evaluate a candidate before replacing an active model.
+
+That is the direction I’m taking with NeuralForge: a small, testable workflow for local learning, with explicit ownership and a reversible update path.
+
+## How you can use it
+
+| Interface | What you can do |
 | --- | --- |
-| Prepared inference | Caller-owned input/output buffers and a reusable hidden-layer workspace; no C++ heap allocations on valid prepared calls |
-| Hardware dispatch | Runtime-guarded AVX2 on GCC/Clang x86; NEON on AArch64; selectable scalar fallback |
-| Native embedding | Opaque C handles, explicit lengths, thread-local errors and an installable CMake package |
-| Local training | Reverse-mode autograd, stable logits cross-entropy, SGD and Adam |
-| Checkpoint resume | Weights, Adam moments/timestep, semantic names and stored standardization; v1 identity checkpoints remain readable |
-| Deployment bundles | One artifact carries feature order, class names, preprocessing and weights; the C API accepts raw feature vectors |
-| Controlled updates | Recent-quality improvement, overall/per-class retention checks, resource budgets and explicit approval |
-| Rollback and audit | One previous active model and an in-process event log, with an exported report in the demo |
-| Evidence | GCC/Clang and native ARM64 CI; scalar sanitizers; allocation/lifetime tests; parser fuzz smoke; PyTorch/ONNX Runtime comparisons |
+| **Command line** | Run inference, train a classifier, inspect latency, or walk through the adaptation demo. |
+| **C++ library** | Load a model or deployment bundle and infer directly into reusable application buffers. |
+| **C API** | Embed the runtime in a C application or connect another language through FFI. My Python comparison tools use this API through `ctypes`. |
 
-## Build and try it
+An application supplies features and decides what to do with the prediction:
 
-Requires a C++20 compiler and CMake 3.20+. Tests and Google Benchmark are fetched only when their build options are enabled.
+```text
+Application features → Stored preprocessing → Native inference → Class probabilities
+```
+
+Raw-sensor acquisition, feature extraction and application actions remain the integrating application's responsibility.
+
+## Try it locally
+
+You need a C++20 compiler and CMake 3.20+. The commands below target Linux. Test and Google Benchmark dependencies are fetched when their build options are enabled.
 
 ```sh
 git clone https://github.com/eluan216/NeuralForge.git
@@ -43,137 +53,109 @@ ctest --test-dir build --output-on-failure --parallel 2
 ./build/bin/neuralforge_adapt_demo --output artifacts/adaptation
 ```
 
-The adaptation demo:
-1. Trains an initial classifier on simulated two-channel sensor features.
-2. Saves and reloads its complete training checkpoint.
-3. Trains a separate candidate on labelled shifted examples plus replay data.
-4. Evaluates untouched recent and reference holdouts.
-5. Requires approval before promotion, rejects a deliberately bad candidate, and verifies rollback.
+The adaptation demo trains an initial classifier, resumes a checkpoint, evaluates a separate candidate, requires approval to promote it, rejects a bad candidate, and verifies rollback. Its report is written to `artifacts/adaptation/report.json`.
 
-Read `artifacts/adaptation/report.json` for cohort results and the event sequence. The injected shift and generated data are reproducible simulations, not a hardware experiment or a client outcome.
+I use generated sensor-like features for this demonstration. It is a simulation of the update workflow, separate from the recorded-data experiment below.
 
-[Adaptation contract and limitations →](docs/controlled-adaptation.md)
+## What I’ve implemented
 
-## Real sensor evidence
+- **Prepared inference:** caller-owned buffers and reusable workspace, with no C++ heap allocations on valid prepared calls.
+- **CPU kernels:** guarded AVX2 dispatch on supported GCC/Clang x86 builds, AArch64 NEON, and a scalar fallback.
+- **Local training:** reverse-mode autograd, stable logits cross-entropy, SGD and resumable Adam.
+- **Deployment bundles:** ordered feature names, class names, frozen standardization and weights travel together.
+- **Controlled updates:** recent-quality improvement, overall/per-class retention checks, resource limits and explicit promotion approval.
+- **Recovery:** one-level rollback restores the full artifact; an in-process audit records update decisions.
+- **Native embedding:** opaque C handles, explicit buffer lengths, thread-local errors and an installable CMake package.
 
-I also evaluate the native training/deployment path on **UCI Human Activity Recognition Using Smartphones**, separate from the simulated adaptation demo.
+The current model architecture is **Dense → ReLU → Dense → Softmax**, using float32 values.
 
-| Fixed participant-held-out protocol | Test accuracy | Macro-F1 |
-| --- | ---: | ---: |
-| NeuralForge C++ 561→32→6 MLP | 94.20% | 94.14% |
-| Logistic regression baseline | 95.11% | 95.07% |
-| Majority baseline | 18.22% | 5.14% |
+## Embed it in an application
 
-The experiment fits on 16 participants, selects an epoch using five other training participants, and evaluates the official nine-participant test cohort: 2,947 rows. Additional standardization is fitted on the fitting participants only. The raw-input deployment bundle matches PyTorch's predicted classes on all test examples.
-
-The linear baseline is stronger here; I report it rather than claiming the neural model is best. These are publisher-provided engineered features, not an implemented raw-signal DSP pipeline or industrial field validation. This experiment does not adapt to the test subjects.
-
-[Protocol, pinned environment, full metrics and reproduction →](docs/real-sensor-evaluation.md)
-
-## Prepare once, infer into your buffers
+My low-level C++ interface lets you prepare once and reuse your buffers:
 
 ```cpp
 #include <neuralforge/model.hpp>
 #include <vector>
 
-auto model = neuralforge::MLPModel::load("models/toy_classifier.nfmodel");
-auto workspace = model.prepare();
-std::vector<float> input(model.input_features(), 0.25f);
-std::vector<float> probabilities(model.output_features());
+int main() {
+    auto model = neuralforge::MLPModel::load("models/toy_classifier.nfmodel");
+    auto workspace = model.prepare();
+    std::vector<float> input(model.input_features(), 0.25f);
+    std::vector<float> probabilities(model.output_features());
 
-// Reuse these buffers and workspace for subsequent calls.
-model.predict_proba_into(input, 1, probabilities, workspace);
+    model.predict_proba_into(input, 1, probabilities, workspace);
+}
 ```
 
-The workspace holds `hidden_features * sizeof(float)` scratch bytes, independently of batch size. Weights, vector/object bookkeeping and caller input/output buffers are additional memory. A shared model is immutable; use a separate workspace for every concurrent call.
+This low-level interface expects preprocessed inputs. For raw feature vectors, use `InferenceArtifact::load` with a `.nfbundle`; it applies the stored preprocessing. I expose the same bundle-loading path through the C API.
 
-The low-level MLP interface expects already-preprocessed values. For raw inputs, load an `InferenceArtifact` from a `.nfbundle`; it applies stored preprocessing and retains ordered feature/class names. Non-finite inputs, mismatched buffers, overlap and non-finite intermediate results are rejected. Outputs from a failed call must be discarded.
+A shared model is immutable. Give each concurrent inference its own workspace, and discard output from a failed call.
 
-[Memory, threading and C API details →](docs/embedding.md)
+[Installation, the C example, ownership and memory details →](docs/embedding.md)
 
-## Embed without Python
+## The evidence I publish
 
-```sh
-cmake -S . -B build-core -DCMAKE_BUILD_TYPE=Release \
-  -DNEURALFORGE_BUILD_TESTS=OFF -DNEURALFORGE_BUILD_BENCHMARKS=OFF
-cmake --build build-core --parallel 2
-cmake --install build-core --prefix "$PWD/install"
+I keep correctness, model quality and runtime performance separate.
 
-cmake -S examples/embedding -B consumer -DCMAKE_PREFIX_PATH="$PWD/install"
-cmake --build consumer --parallel 2
-./consumer/embed models/toy_classifier.nfmodel
-```
+On **UCI Human Activity Recognition Using Smartphones**, my fixed participant-held-out experiment produced:
 
-Use `find_package(NeuralForge CONFIG REQUIRED)` and link `NeuralForge::neuralforge`. The core needs the platform C/C++ runtime, but no Python, model SDK or third-party numerical library. The [C example](examples/c_inference.c) demonstrates ownership and cleanup.
+| Model | Test accuracy | Macro-F1 |
+| --- | ---: | ---: |
+| NeuralForge C++ 561→32→6 MLP | 94.20% | 94.14% |
+| Logistic regression baseline | 95.11% | 95.07% |
+| Majority baseline | 18.22% | 5.14% |
 
-Set `-DBUILD_SHARED_LIBS=ON` for a shared library or ctypes integration. Set `-DNEURALFORGE_ENABLE_SIMD=OFF` for the explicit scalar kernel. No global `-march=native` is required.
+I fit on 16 participants, select an epoch using five separate validation participants, and score the official nine-participant test cohort: 2,947 examples. Additional standardization is fitted only on fitting data. The deployed bundle matches PyTorch's predicted classes on every test example and transfers unchanged to hosted native ARM64 with zero class differences.
 
-## Measure before making performance claims
+The linear baseline is stronger here, and I report that result. These are publisher-provided engineered smartphone features, not an industrial field trial or a raw-signal pipeline I implemented.
 
-```sh
-cmake -S . -B build-shared -DCMAKE_BUILD_TYPE=Release \
-  -DBUILD_SHARED_LIBS=ON \
-  -DNEURALFORGE_BUILD_TESTS=OFF -DNEURALFORGE_BUILD_BENCHMARKS=OFF
-cmake --build build-shared --parallel 2
+[Full protocol, metrics, attribution and reproduction →](docs/real-sensor-evaluation.md)
 
-python -m pip install numpy onnx onnxruntime
-python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
-python python/benchmark_compare.py \
-  --library build-shared/lib/libneuralforge.so \
-  --output artifacts/comparison.json
-```
+I also compare identical weights against PyTorch CPU and ONNX Runtime. Those measurements disclose Python/FFI overhead, thread settings and output-buffer ownership. Larger-batch results favor ONNX Runtime; I do not claim a universal speed advantage.
 
-This compares identical float32 weights and inputs across NeuralForge, PyTorch CPU and ONNX Runtime: three model sizes, batches 1 and 32, one thread, numerical/class agreement, startup, latency percentiles and process peak RSS.
+[Runtime benchmark methodology and commands →](docs/benchmarks.md)
 
-The Python benchmark includes each backend's Python/FFI boundary and reports differing output-buffer ownership. It is not an isolated kernel comparison. Native latency is measured separately. CI results depend on the host; no universal speedup, energy saving or device-memory claim follows from them.
+## How I check changes
 
-[Benchmark methodology and reproduction →](docs/benchmarks.md)
+CI covers Linux GCC, Clang, hosted native ARM64 and a scalar sanitizer build. Checks include:
 
-## Training and checkpointing
+- Numerical agreement, C embedding and installed-package consumption.
+- Training-graph lifetime, checkpoint resume and transactional Adam failures.
+- Semantic schema checks, class retention, resource limits and rollback.
+- Allocation counting across 4,000 prepared C/C++ calls.
+- A bounded model/artifact parser fuzz run.
+- Participant-separated sensor evaluation and x86-to-ARM64 artifact transfer.
 
-The original pure C++ classifier example remains available:
+Training, loading, error handling and audit logging allocate memory. The prepared-call allocation contract is narrower than a fixed-memory or hard-real-time guarantee.
 
-```sh
-./build/bin/neuralforge_train_classifier \
-  --output artifacts/classifier.nfmodel --epochs 150 --seed 7
-```
-
-Create the output directory first. For resumable application training, use `TrainableMLP`, `train_batch`, `save_checkpoint` and `load_checkpoint`. Checkpoints preserve Adam state by parameter order, not transient pointer addresses. A test compares resumed and uninterrupted updates exactly within the same build.
-
-A `.nfmodel` is an inference-only weight artifact. A `.nfbundle` adds preprocessing and semantic names and is directly loadable by the C API. Version 2 `.nfcheckpoint` files preserve weights, Adam state, names and standardization for raw-input training; version 1 identity checkpoints remain readable. `learner.artifact()` produces a deployable bundle without losing preprocessing. Signal processing before the published feature vector remains the application’s responsibility.
-
-## Verification and supported scope
-
-- Linux x86-64: GCC and Clang.
-- Linux ARM64: native runner exercising the NEON path; not Raspberry Pi board certification.
-- Scalar Debug build: AddressSanitizer, UndefinedBehaviorSanitizer and leak detection.
-- Prepared C++/C calls: a standalone allocation counter checks 4,000 calls, including standardized bundle inference.
-- Training: graph-lifetime, checkpoint resume and atomic Adam-failure tests.
-- Deployment: approval, forgetting, class coverage, resource limits and rollback.
-- Model parser: a 2,000-input libFuzzer smoke run; not an exhaustive security audit.
-- Export: PyTorch parity and held-out agreement are checked separately from runtime timings.
-- Real sensor protocol: official participant separation, training-only additional preprocessing, validation selection and an untouched official test cohort; a second native ARM64 job checks the x86-trained bundle without retraining.
-
-Windows, macOS, bare-metal MCUs, GPU/NPU backends, quantization and physical-device power measurements are future work. This runtime currently supports Dense → ReLU → Dense → Softmax, not arbitrary networks or LLMs. The update gate is a library policy, not an authentication or safety-certification system.
-
-## Repository map
+## Find your way around
 
 ```text
-include/neuralforge/  Public C++ interfaces and the C API
-src/                 Tensor math, autograd, SIMD dispatch, inference and learning
-apps/                CLI examples, adaptation simulation and native timing
+include/neuralforge/  Public C++ interfaces and C API
+src/                 Kernels, inference, autograd and local learning
+apps/                Command-line examples and dataset trainer
 examples/            C embedding and installed-package consumer
-python/              Export, parity and same-weight comparison tools
-tests/               Unit, resource, ownership and workflow checks
-fuzz/                In-memory model-loader harness
-benchmarks/          Google Benchmark cases and historical measurements
-docs/                Embedding, adaptation and evidence contracts
+python/              Data preparation, export and evaluation tools
+tests/               Unit, ownership, resource and workflow checks
+fuzz/                Parser fuzz harness
+benchmarks/          Microbenchmarks and recorded evidence
+docs/                Setup, contracts, methodology and dataset attribution
 ```
+
+Start with the [documentation index](docs/README.md). I keep generated builds, caches, checkpoints and experimental outputs out of the source tree through [the ignore rules](.gitignore).
+
+## Where I’m taking it next
+
+My next priorities are independent physical-device measurements, more attributed sensor tasks, stronger validation of model formats, and additional output heads where a concrete application needs them.
+
+The supported evidence currently covers hosted Linux x86-64 and ARM64. Physical sensor boards, bare-metal microcontrollers, GPU/NPU backends, quantization and arbitrary ONNX models remain future work.
 
 ## Contribute
 
-I welcome reproducible bug reports, independent benchmark runs and focused integration improvements. Read [CONTRIBUTING.md](CONTRIBUTING.md). Useful next work includes independent physical-device measurements, other attributed real sensor tasks, further checkpoint-format validation and additional output heads—each with tests and honest capability boundaries.
+I welcome reproducible bug reports, independent measurements and focused integration improvements. Please read [CONTRIBUTING.md](CONTRIBUTING.md) and include the build, inputs and evidence needed to reproduce your result.
+
+You can also find me on [GitHub](https://github.com/eluan216).
 
 ## License
 
-[MIT](LICENSE).
+I release NeuralForge under the [MIT License](LICENSE). External datasets and dependencies retain their own licenses; the UCI evaluation includes [separate dataset attribution](docs/datasets/uci-har.md).

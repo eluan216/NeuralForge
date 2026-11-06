@@ -14,3 +14,16 @@ __pycache__/
 /benchmarks/results/baseline_*/
 
 /.cache/
+
+# Local evaluation downloads and compiler / coverage byproducts
+/transferred-model/
+/compile_commands.json
+*.gcda
+*.gcno
+*.profraw
+*.profdata
+venv/
+
+# Operating-system files
+.DS_Store
+Thumbs.db
