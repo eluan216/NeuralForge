@@ -20,6 +20,11 @@ private:
     float lr_;
 };
 
+struct AdamSnapshot {
+ float learning_rate{},beta1{},beta2{},epsilon{};
+ std::size_t timestep{};
+ std::vector<Tensor> first,second;
+};
 /// Adam with bias-corrected moments. State is keyed by parameter identity
 /// and persists across step() calls (do not reconstruct Adam each batch).
 class Adam {
@@ -34,6 +39,8 @@ public:
     [[nodiscard]] float beta2() const noexcept { return beta2_; }
     [[nodiscard]] float eps() const noexcept { return eps_; }
     [[nodiscard]] std::size_t timestep() const noexcept { return t_; }
+    [[nodiscard]] AdamSnapshot snapshot(const std::vector<Variable>& parameters) const;
+    void restore(const AdamSnapshot& state,const std::vector<Variable>& parameters);
 
     void step(std::vector<Variable>& parameters);
     void zero_grad(std::vector<Variable>& parameters);

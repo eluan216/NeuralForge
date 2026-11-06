@@ -168,13 +168,15 @@ Variable matmul(const Variable& a, const Variable& b) {
 
     auto a_impl = a.impl();
     auto b_impl = b.impl();
-    auto out_holder = std::make_shared<std::shared_ptr<Variable::Impl>>();
+    auto out_holder = std::make_shared<std::weak_ptr<Variable::Impl>>();
 
     Variable out = make_from_op(
         std::move(result),
         {a_impl, b_impl},
         [a_impl, b_impl, out_holder](const Tensor&) {
-            const Tensor& gy = (*out_holder)->grad;
+            const auto output = out_holder->lock();
+            if (!output) return;
+            const Tensor& gy = output->grad;
             if (gy.size() == 0) return;
             if (a_impl->requires_grad) {
                 Tensor Bt = transpose_2d(b_impl->data);
@@ -197,13 +199,15 @@ Variable add(const Variable& a, const Variable& b) {
     auto b_impl = b.impl();
     const bool a_is_bias = (a.data().ndim() == 1 && b.data().ndim() == 2);
     const bool b_is_bias = (b.data().ndim() == 1 && a.data().ndim() == 2);
-    auto out_holder = std::make_shared<std::shared_ptr<Variable::Impl>>();
+    auto out_holder = std::make_shared<std::weak_ptr<Variable::Impl>>();
 
     Variable out = make_from_op(
         std::move(result),
         {a_impl, b_impl},
         [a_impl, b_impl, a_is_bias, b_is_bias, out_holder](const Tensor&) {
-            const Tensor& gy = (*out_holder)->grad;
+            const auto output = out_holder->lock();
+            if (!output) return;
+            const Tensor& gy = output->grad;
             if (gy.size() == 0) return;
             if (a_impl->requires_grad) {
                 if (a_is_bias) {
@@ -235,13 +239,15 @@ Variable relu(const Variable& x) {
         result.at(i) = std::max(0.0f, x.data().at(i));
     }
     auto x_impl = x.impl();
-    auto out_holder = std::make_shared<std::shared_ptr<Variable::Impl>>();
+    auto out_holder = std::make_shared<std::weak_ptr<Variable::Impl>>();
 
     Variable out = make_from_op(
         std::move(result),
         {x_impl},
         [x_impl, out_holder](const Tensor&) {
-            const Tensor& gy = (*out_holder)->grad;
+            const auto output = out_holder->lock();
+            if (!output) return;
+            const Tensor& gy = output->grad;
             if (gy.size() == 0 || !x_impl->requires_grad) return;
             Tensor dx(x_impl->data.shape(), 0.0f);
             for (std::size_t i = 0; i < x_impl->data.size(); ++i) {
@@ -260,13 +266,15 @@ Variable sum(const Variable& x) {
     Tensor result({1}, total);
 
     auto x_impl = x.impl();
-    auto out_holder = std::make_shared<std::shared_ptr<Variable::Impl>>();
+    auto out_holder = std::make_shared<std::weak_ptr<Variable::Impl>>();
 
     Variable out = make_from_op(
         std::move(result),
         {x_impl},
         [x_impl, out_holder](const Tensor&) {
-            const Tensor& gy = (*out_holder)->grad;
+            const auto output = out_holder->lock();
+            if (!output) return;
+            const Tensor& gy = output->grad;
             if (gy.size() == 0 || !x_impl->requires_grad) return;
             const float scale = gy.at(0);
             Tensor dx(x_impl->data.shape(), scale);

@@ -49,7 +49,7 @@ Variable mse_loss(const Variable& prediction, const Variable& target) {
     Tensor out({1}, mean);
 
     auto pred_impl = prediction.impl();
-    auto out_holder = std::make_shared<std::shared_ptr<Variable::Impl>>();
+    auto out_holder = std::make_shared<std::weak_ptr<Variable::Impl>>();
 
     const bool needs_grad = pred_impl && pred_impl->requires_grad;
     Variable result(std::move(out), needs_grad);
@@ -59,7 +59,9 @@ Variable mse_loss(const Variable& prediction, const Variable& target) {
     auto node = std::make_shared<Variable::Node>();
     node->inputs = {pred_impl};
     node->backward = [pred_impl, out_holder, target_copy, n](const Tensor&) {
-        const Tensor& gy = (*out_holder)->grad;
+        const auto output = out_holder->lock();
+            if (!output) return;
+            const Tensor& gy = output->grad;
         if (gy.size() == 0 || !pred_impl->requires_grad) return;
         const float scale = gy.at(0) * (2.0f / static_cast<float>(n));
         Tensor dx(pred_impl->data.shape());
@@ -123,7 +125,7 @@ Variable cross_entropy_loss(const Variable& logits,
     Tensor out({1}, mean);
 
     auto logits_impl = logits.impl();
-    auto out_holder = std::make_shared<std::shared_ptr<Variable::Impl>>();
+    auto out_holder = std::make_shared<std::weak_ptr<Variable::Impl>>();
     const bool needs_grad = logits_impl && logits_impl->requires_grad;
     Variable result(std::move(out), needs_grad);
     if (!needs_grad) return result;
@@ -132,7 +134,9 @@ Variable cross_entropy_loss(const Variable& logits,
     auto node = std::make_shared<Variable::Node>();
     node->inputs = {logits_impl};
     node->backward = [logits_impl, out_holder, targets_copy, batch, classes](const Tensor&) {
-        const Tensor& gy = (*out_holder)->grad;
+        const auto output = out_holder->lock();
+            if (!output) return;
+            const Tensor& gy = output->grad;
         if (gy.size() == 0 || !logits_impl->requires_grad) return;
 
         // ∂L/∂logits = (1/B) * gy * (softmax(logits) - one_hot(y))
