@@ -8,7 +8,6 @@ import json
 import os
 from pathlib import Path
 import platform
-import resource
 import subprocess
 import sys
 import time
@@ -21,6 +20,17 @@ def versions():
         except importlib.metadata.PackageNotFoundError:
             result[package] = None
     return result
+
+def process_peak_kib():
+    # getrusage().ru_maxrss can carry a heavy fork parent's peak across exec.
+    # VmHWM belongs to this process's current address space instead.
+    try:
+        for line in Path("/proc/self/status").read_text().splitlines():
+            if line.startswith("VmHWM:"):
+                return int(line.split()[1])
+    except (OSError, ValueError):
+        pass
+    return None
 
 def worker(args):
     import numpy as np
@@ -116,7 +126,8 @@ def worker(args):
                           "p95_us": float(np.percentile(timings, 95)),
                           "p99_us": float(np.percentile(timings, 99)),
                           "max_abs_error": max_error, "class_agreement": True,
-                          "process_peak_rss_kib": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
+                          "process_peak_rss_kib": process_peak_kib(),
+                          "rss_method": "Linux /proc/self/status VmHWM estimate; current exec address space",
                           **details}))
     finally:
         cleanup()
@@ -198,7 +209,7 @@ def main():
                               "thread_limit": 1, "precision": "float32"},
               "limitations": ["Synthetic weights and inputs: these are not model-accuracy results.",
                              "All timed calls include their Python/FFI overhead. Output-buffer ownership differs and is reported.",
-                             "Peak RSS is a fresh worker's full process high-water mark, including Python and imported dependencies.",
+                             "Peak RSS uses the kernel-reported VmHWM estimate for the worker exec image, including Python and imported dependencies.",
                              "Startup includes backend import/load/configuration after shared NumPy fixture loading.",
                              "CI timings are environment-specific, not independently reproduced device guarantees."],
               "results": rows}

@@ -24,7 +24,7 @@ AdaptiveDeployment evaluates a candidate internally against:
 3. Parameter-byte and prepared-scratch limits.
 4. Explicit caller approval.
 
-The reference cohort must cover every class. This prevents an unobserved class from silently receiving a passing retention result. Aggregate accuracy alone can still miss important subgroups; supply representative cohorts and add task-specific checks before any high-impact deployment.
+The gate checks input and output dimensions; callers must also check semantic feature order and class mapping from their checkpoint/application schema before evaluating an inference-only model. The reference cohort must cover every class. This prevents an unobserved class from silently receiving a passing retention result. Aggregate accuracy alone can still miss important subgroups; supply representative cohorts and add task-specific checks before any high-impact deployment.
 
 Default policy: at least 20 samples per cohort, 0.02 absolute recent accuracy gain, at most 0.01 reference accuracy drop, at most 0.05 per-class recall drop, 4 MiB parameter storage and 256 KiB scratch. These defaults are illustrative thresholds, not a statistical guarantee or validated industrial policy.
 

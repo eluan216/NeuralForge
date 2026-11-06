@@ -24,7 +24,7 @@ The script uses a new process per backend/shape. It records package versions, pl
 
 ### Interpretation
 
-These are Python API-boundary comparisons, not isolated native-kernel timings. Framework return buffers and FFI paths differ; the report discloses ownership. Startup includes backend import, model construction/load and configuration after shared NumPy fixture loading. Process peak RSS includes Python, NumPy, the backend and allocator behavior, not just model memory. Fixture files use synthetic weights; classification accuracy has not been established by these timings.
+These are Python API-boundary comparisons, not isolated native-kernel timings. Framework return buffers and FFI paths differ; the report discloses ownership. Startup includes backend import, model construction/load and configuration after shared NumPy fixture loading. Process peak RSS uses Linux /proc/self/status VmHWM for the worker exec address space, an OS-reported estimate. It includes Python, NumPy, the backend and allocator behavior, not just model memory. getrusage ru_maxrss is avoided because a fork parent’s larger pre-exec peak can carry over. Fixture files use synthetic weights; classification accuracy has not been established by these timings.
 
 Shared CI hosts have scheduling/frequency noise and are not controlled hardware laboratories. Compare quality/resource trade-offs on your target device, repeat runs and retain raw evidence. Do not merge native-only latency with Python-boundary timings into an unlabeled speedup.
 
