@@ -14,17 +14,23 @@ concurrency:
 jobs:
   build-and-test:
     name: Build & Test (${{ matrix.compiler }})
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - compiler: gcc
+            os: ubuntu-24.04
             cc: gcc-13
             cxx: g++-13
           - compiler: clang
+            os: ubuntu-24.04
             cc: clang-18
             cxx: clang++-18
+          - compiler: gcc-arm64
+            os: ubuntu-24.04-arm
+            cc: gcc-13
+            cxx: g++-13
 
     steps:
       - name: Checkout
@@ -59,7 +65,47 @@ jobs:
           ./build/bin/neuralforge_model_runner models/toy_classifier.nfmodel
           ./build/bin/neuralforge_model_runner models/toy_classifier.nfmodel -2.0 -1.5
 
+      - name: Install and consume exported CMake package
+        run: |
+          cmake --install build --prefix "$RUNNER_TEMP/nf-install"
+          cmake -S examples/embedding -B consumer -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/nf-install"
+          cmake --build consumer --parallel
+          ./consumer/embed models/toy_classifier.nfmodel
+
+      - name: Native latency report
+        run: ./build/bin/neuralforge_latency models/toy_classifier.nfmodel
+
+      - name: Save synthetic adaptation audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: adaptation-${{ matrix.compiler }}
+          path: build/adapt-artifacts/
+
       - name: Smoke — demos
         run: |
           ./build/bin/neuralforge_demo
           ./build/bin/neuralforge_inference_demo
+
+  sanitizer-and-fuzz:
+    name: Sanitizers, scalar fallback and parser fuzzing
+    runs-on: ubuntu-24.04
+    env:
+      CC: clang-18
+      CXX: clang++-18
+      ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build scalar sanitizer configuration
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DNEURALFORGE_BUILD_BENCHMARKS=OFF -DNEURALFORGE_ENABLE_SIMD=OFF -DNEURALFORGE_SANITIZERS=ON
+          cmake --build build --parallel 2
+      - name: Run sanitizer tests
+        run: ctest --test-dir build --output-on-failure --parallel 2
+      - name: Build in-memory model parser fuzzer
+        run: |
+          clang++-18 -std=c++20 -g -O1 -fsanitize=fuzzer,address,undefined -Iinclude fuzz/model_loader.cpp src/tensor.cpp src/matmul.cpp src/nn_ops.cpp src/model.cpp src/kernels.cpp -o build/model_fuzz
+          mkdir -p build/fuzz-corpus
+          cp models/toy_classifier.nfmodel build/fuzz-corpus/valid-model
+      - name: Fuzz smoke (bounded, not exhaustive)
+        run: ./build/model_fuzz -runs=2000 -max_len=4096 -timeout=10 -rss_limit_mb=512 build/fuzz-corpus

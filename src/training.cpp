@@ -67,8 +67,10 @@ void TrainableMLP::save_checkpoint(const std::filesystem::path& path) const {
   out<<"NEURALFORGE_TRAINING 1\n"<<model.input_features()<<' '<<model.hidden_features()<<' '<<model.output_features()<<'\n';
   out<<state.learning_rate<<' '<<state.beta1<<' '<<state.beta2<<' '<<state.epsilon<<' '<<state.timestep<<'\n';
   out<<"identity\n";
-  for(const auto& name:schema_.features)out<<std::quoted(name)<<' ';out<<'\n';
-  for(const auto& name:schema_.classes)out<<std::quoted(name)<<' ';out<<'\n';
+  for(const auto& name:schema_.features) {out<<std::quoted(name)<<' ';}
+  out<<'\n';
+  for(const auto& name:schema_.classes) {out<<std::quoted(name)<<' ';}
+  out<<'\n';
   for(const auto& t:p)write_tensor(out,t);
   for(const auto& t:state.first)write_tensor(out,t);
   for(const auto& t:state.second)write_tensor(out,t);

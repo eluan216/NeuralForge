@@ -86,6 +86,10 @@ void require_finite_inputs(const Tensor& inputs) {
 MLPModel MLPModel::load(const std::filesystem::path& path) {
     std::ifstream in(path);
     if (!in) throw std::runtime_error("Cannot open model file: " + path.string());
+    return read(in);
+}
+
+MLPModel MLPModel::read(std::istream& in) {
     std::string magic;
     int version{};
     if (!(in >> magic >> version) || magic != "NEURALFORGE_MLP" || version != 1) {

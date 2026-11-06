@@ -41,16 +41,22 @@ TEST(Prepared, SharedModelSupportsIndependentConcurrentWorkspaces) {
   auto w=model.prepare();std::vector<float> x(2,1),y(3);
   for(int i=0;i<100;++i){model.predict_proba_into(x,1,y,w);if(std::abs(y[0]+y[1]+y[2]-1)>1e-5)ok=false;}
  });
- for(auto& t:threads)t.join();EXPECT_TRUE(ok);EXPECT_EQ(id,model.fingerprint());
+ for(auto& t:threads)t.join();
+ EXPECT_TRUE(ok);
+ EXPECT_EQ(id,model.fingerprint());
 }
 TEST(CAbi, InvalidArgumentsNeverThrowAcrossBoundary) {
  nf_model* model=reinterpret_cast<nf_model*>(1);nf_workspace* w=reinterpret_cast<nf_workspace*>(1);
- EXPECT_EQ(nf_model_load(nullptr,&model),NF_INVALID_ARGUMENT);EXPECT_EQ(model,nullptr);
- EXPECT_EQ(nf_workspace_create(nullptr,&w),NF_INVALID_ARGUMENT);EXPECT_EQ(w,nullptr);
+ EXPECT_EQ(nf_model_load(nullptr,&model),NF_INVALID_ARGUMENT);
+ EXPECT_EQ(model,nullptr);
+ EXPECT_EQ(nf_workspace_create(nullptr,&w),NF_INVALID_ARGUMENT);
+ EXPECT_EQ(w,nullptr);
  EXPECT_EQ(nf_model_load("missing",nullptr),NF_INVALID_ARGUMENT);
  EXPECT_EQ(nf_predict_proba(nullptr,nullptr,nullptr,0,0,nullptr,0),NF_INVALID_ARGUMENT);
- EXPECT_NE(nf_last_error()[0],'\0');EXPECT_EQ(nf_abi_version(),1u);
- EXPECT_NO_THROW(nf_model_destroy(nullptr));EXPECT_NO_THROW(nf_workspace_destroy(nullptr));
+ EXPECT_NE(nf_last_error()[0],'\0');
+ EXPECT_EQ(nf_abi_version(),1u);
+ EXPECT_NO_THROW(nf_model_destroy(nullptr));
+ EXPECT_NO_THROW(nf_workspace_destroy(nullptr));
 }
 TEST(ModelIdentity, ChangesWithParametersAndSurvivesCopy) {
  const auto a=nf_test::model();auto p=a.parameters();p[1].at(0)+=1;

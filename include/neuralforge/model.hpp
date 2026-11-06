@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <iosfwd>
 #include <array>
 #include <span>
 #include <cstdint>
@@ -30,6 +31,7 @@ public:
     /// Stable content identifier, not a cryptographic signature.
     [[nodiscard]] std::uint64_t fingerprint() const noexcept;
     static MLPModel load(const std::filesystem::path& path);
+    static MLPModel read(std::istream& stream);
     [[nodiscard]] Tensor predict_proba(const Tensor& inputs) const;
     [[nodiscard]] std::vector<std::size_t> predict(const Tensor& inputs) const;
     [[nodiscard]] std::size_t input_features() const noexcept { return input_features_; }
