@@ -34,6 +34,8 @@ add_library(neuralforge
     src/autograd.cpp
     src/loss.cpp
     src/optim.cpp
+    src/schema.cpp
+    src/artifact.cpp
     src/kernels.cpp
     src/c_api.cpp
     src/training.cpp
@@ -104,6 +106,7 @@ if(NEURALFORGE_BUILD_TESTS)
         tests/test_reliability.cpp
         tests/test_autograd.cpp
         tests/test_training.cpp
+        tests/test_artifact.cpp
         tests/test_prepared.cpp
         tests/test_checkpoints.cpp
         tests/test_adaptation.cpp

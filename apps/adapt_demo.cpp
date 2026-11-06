@@ -57,7 +57,7 @@ int main(int argc,char** argv) {
   auto bad=p;for(auto& tensor:bad)for(std::size_t i=0;i<tensor.size();++i)tensor.at(i)=0;
   const auto rejection=deployment.consider(MLPModel::from_parameters(bad),recent_holdout,reference_holdout,policy,true);
   if(rejection.promoted||rejection.eligible)throw std::runtime_error("Bad candidate was not rejected");
-  if(!deployment.rollback(true)||deployment.active().fingerprint()!=baseline.fingerprint())
+  if(!deployment.rollback(true)||deployment.active().model().fingerprint()!=baseline.fingerprint())
    throw std::runtime_error("Rollback did not restore original weights");
   const auto weights=model.parameters();
   export_mlp_model(directory/"candidate.nfmodel",weights[0],weights[1],weights[2],weights[3]);

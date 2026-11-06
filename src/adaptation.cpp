@@ -6,7 +6,7 @@
 namespace neuralforge {
 namespace {
 struct Metrics {double accuracy;std::vector<double> recall;};
-Metrics measure(const MLPModel& model,const LabeledBatch& data,std::size_t minimum,bool require_coverage=false) {
+Metrics measure(const InferenceArtifact& model,const LabeledBatch& data,std::size_t minimum,bool require_coverage=false) {
  if(data.inputs.ndim()!=2||data.inputs.shape()[0]!=data.labels.size()||data.labels.size()<minimum)
   throw std::invalid_argument("Evaluation needs enough labelled rows with matching shape");
  for(auto label:data.labels)if(label>=model.output_features())throw std::invalid_argument("Evaluation label outside class range");
@@ -28,15 +28,16 @@ Metrics measure(const MLPModel& model,const LabeledBatch& data,std::size_t minim
  return metrics;
 }
 }
-AdaptiveDeployment::AdaptiveDeployment(MLPModel active):active_(std::move(active)) {(void)active_.prepare();}
-GateReport AdaptiveDeployment::consider(const MLPModel& candidate,const LabeledBatch& recent,
+AdaptiveDeployment::AdaptiveDeployment(MLPModel active):AdaptiveDeployment(InferenceArtifact(std::move(active))) {}
+AdaptiveDeployment::AdaptiveDeployment(InferenceArtifact active):active_(std::move(active)) {(void)active_.prepare();}
+GateReport AdaptiveDeployment::consider(const InferenceArtifact& candidate,const LabeledBatch& recent,
                                         const LabeledBatch& reference,GatePolicy policy,bool approved) {
  if(!std::isfinite(policy.minimum_gain)||!std::isfinite(policy.maximum_retention_drop)||
     policy.minimum_gain<0||policy.minimum_gain>1||policy.maximum_retention_drop<0||policy.maximum_retention_drop>1||policy.minimum_samples==0||!std::isfinite(policy.maximum_class_recall_drop)||policy.maximum_class_recall_drop<0||
     policy.maximum_class_recall_drop>1||!policy.maximum_parameter_bytes||!policy.maximum_scratch_bytes)
   throw std::invalid_argument("Invalid promotion policy");
- if(candidate.input_features()!=active_.input_features()||candidate.output_features()!=active_.output_features())
-  throw std::invalid_argument("Candidate input and class contracts must match active model");
+ if(candidate.input_features()!=active_.input_features()||candidate.output_features()!=active_.output_features()||candidate.schema().features!=active_.schema().features||candidate.schema().classes!=active_.schema().classes)
+  throw std::invalid_argument("Candidate feature order and class mapping must match active artifact");
  GateReport report;
  const auto ar=measure(active_,recent,policy.minimum_samples),cr=measure(candidate,recent,policy.minimum_samples);
  const auto af=measure(active_,reference,policy.minimum_samples,true),cf=measure(candidate,reference,policy.minimum_samples,true);
@@ -60,6 +61,9 @@ GateReport AdaptiveDeployment::consider(const MLPModel& candidate,const LabeledB
   previous_=std::move(previous);active_=std::move(next);
  }
  audit_.swap(events);return report;
+}
+GateReport AdaptiveDeployment::consider(const MLPModel& candidate,const LabeledBatch& recent,const LabeledBatch& reference,GatePolicy policy,bool approved) {
+ return consider(InferenceArtifact(candidate),recent,reference,policy,approved);
 }
 bool AdaptiveDeployment::rollback(bool approved) {
  if(!approved||!previous_)return false;

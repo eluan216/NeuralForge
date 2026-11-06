@@ -1,4 +1,6 @@
 #include "neuralforge/model.hpp"
+#include "neuralforge/artifact.hpp"
+#include <filesystem>
 #include "neuralforge/c_api.h"
 #include "neuralforge/kernels.hpp"
 #include <atomic>
@@ -47,13 +49,22 @@ int main(int argc,char** argv) {
   (void)neuralforge::inference_backend();
   nf_model* cmodel=nullptr;nf_workspace* cworkspace=nullptr;
   if(nf_model_load(argv[1],&cmodel)!=NF_OK||nf_workspace_create(cmodel,&cworkspace)!=NF_OK)return 3;
+  neuralforge::Standardization normalization;
+  normalization.mean.assign(model.input_features(),1);normalization.scale.assign(model.input_features(),2);
+  neuralforge::InferenceArtifact artifact(model,{},normalization);auto artifact_workspace=artifact.prepare();
+  const auto bundle_path=std::filesystem::temp_directory_path()/"nf_allocations.nfbundle";artifact.save(bundle_path);
+  nf_model* bundled=nullptr;nf_workspace* bundled_workspace=nullptr;
+  if(nf_model_load(bundle_path.string().c_str(),&bundled)!=NF_OK||nf_workspace_create(bundled,&bundled_workspace)!=NF_OK)return 5;
   track=true;
   for(int i=0;i<1000;++i) {
    model.predict_proba_into(input,4,output,workspace);
+   artifact.predict_proba_into(input,4,output,artifact_workspace);
+   if(nf_predict_proba(bundled,bundled_workspace,input.data(),input.size(),4,output.data(),output.size())!=NF_OK){track=false;return 6;}
    if(nf_predict_proba(cmodel,cworkspace,input.data(),input.size(),4,output.data(),output.size())!=NF_OK){track=false;return 4;}
   }
-  track=false;nf_workspace_destroy(cworkspace);nf_model_destroy(cmodel);
-  std::cout<<"prepared_cpp_and_c_calls=2000 cxx_heap_allocations="<<allocations.load()<<'\n';
+  track=false;nf_workspace_destroy(bundled_workspace);nf_model_destroy(bundled);std::filesystem::remove(bundle_path);
+  nf_workspace_destroy(cworkspace);nf_model_destroy(cmodel);
+  std::cout<<"prepared_cpp_and_c_calls=4000 cxx_heap_allocations="<<allocations.load()<<'\n';
   return allocations.load()==0?0:1;
  }catch(const std::exception& e){track=false;std::cerr<<e.what()<<'\n';return 1;}
 }

@@ -12,13 +12,6 @@
 #include <stdexcept>
 namespace neuralforge {
 namespace {
-void names(std::vector<std::string>& value,std::size_t count,const std::string& prefix) {
- if(value.empty())for(std::size_t i=0;i<count;++i)value.push_back(prefix+std::to_string(i));
- if(value.size()!=count)throw std::invalid_argument("Schema name count mismatch");
- std::set<std::string> unique;
- for(const auto& s:value)if(s.empty()||s.size()>128||s.find_first_of("\r\n\t")!=std::string::npos||!unique.insert(s).second)
-  throw std::invalid_argument("Schema names must be unique, nonempty and at most 128 characters");
-}
 void write_tensor(std::ostream& out,const Tensor& t) {
  for(std::size_t i=0;i<t.size();++i)out<<t.data()[i]<<' ';
  out<<'\n';
@@ -31,18 +24,18 @@ void read_tensor(std::istream& in,Tensor& t,bool variance=false) {
  }
 }
 }
-TrainableMLP::TrainableMLP(const MLPModel& initial,float rate,FeatureSchema schema):optimizer_(rate),schema_(std::move(schema)) {
+TrainableMLP::TrainableMLP(const MLPModel& initial,float rate,FeatureSchema schema,Standardization preprocessing):optimizer_(rate),schema_(std::move(schema)),preprocessing_(std::move(preprocessing)) {
  if(!initial.input_features()||!initial.hidden_features()||!initial.output_features())throw std::invalid_argument("Uninitialized training model");
  for(auto& t:initial.parameters())parameters_.emplace_back(std::move(t),true);
- names(schema_.features,initial.input_features(),"feature_");
- names(schema_.classes,initial.output_features(),"class_");
+ InferenceArtifact checked(initial,schema_,preprocessing_);
+ schema_=checked.schema();preprocessing_=checked.preprocessing();
 }
 float TrainableMLP::train_batch(const Tensor& inputs,const std::vector<std::size_t>& labels) {
  if(inputs.ndim()!=2||inputs.shape()[0]!=labels.size()||inputs.shape()[1]!=parameters_[0].data().shape()[0]||labels.empty())
   throw std::invalid_argument("Training batch shape or labels invalid");
  for(std::size_t i=0;i<inputs.size();++i)if(!std::isfinite(inputs.data()[i]))throw std::invalid_argument("Non-finite training input");
  optimizer_.zero_grad(parameters_);
- Variable x(inputs,false);
+ Variable x(preprocessing_.transform(inputs),false);
  auto hidden=relu(add(matmul(x,parameters_[0]),parameters_[1]));
  auto logits=add(matmul(hidden,parameters_[2]),parameters_[3]);
  auto loss=cross_entropy_loss(logits,labels);
@@ -64,13 +57,14 @@ void TrainableMLP::save_checkpoint(const std::filesystem::path& path) const {
   std::ofstream out(temporary,std::ios::binary);out.imbue(std::locale::classic());
   if(!out)throw std::runtime_error("Cannot create checkpoint staging file");
   out<<std::setprecision(std::numeric_limits<float>::max_digits10);
-  out<<"NEURALFORGE_TRAINING 1\n"<<model.input_features()<<' '<<model.hidden_features()<<' '<<model.output_features()<<'\n';
+  out<<"NEURALFORGE_TRAINING 2\n"<<model.input_features()<<' '<<model.hidden_features()<<' '<<model.output_features()<<'\n';
   out<<state.learning_rate<<' '<<state.beta1<<' '<<state.beta2<<' '<<state.epsilon<<' '<<state.timestep<<'\n';
-  out<<"identity\n";
+  out<<"standardize\n";
   for(const auto& name:schema_.features) {out<<std::quoted(name)<<' ';}
   out<<'\n';
   for(const auto& name:schema_.classes) {out<<std::quoted(name)<<' ';}
   out<<'\n';
+  for(const auto* values:{&preprocessing_.mean,&preprocessing_.scale}) {for(float v:*values)out<<v<<' ';out<<'\n';}
   for(const auto& t:p)write_tensor(out,t);
   for(const auto& t:state.first)write_tensor(out,t);
   for(const auto& t:state.second)write_tensor(out,t);
@@ -83,7 +77,7 @@ TrainableMLP TrainableMLP::load_checkpoint(const std::filesystem::path& path) {
  if(std::filesystem::file_size(path)>16*1024*1024)throw std::runtime_error("Checkpoint exceeds 16 MiB");
  std::ifstream in(path,std::ios::binary);in.imbue(std::locale::classic());
  std::string magic;int version=0;long long ni=0,nh=0,no=0;AdamSnapshot state;
- if(!(in>>magic>>version)||magic!="NEURALFORGE_TRAINING"||version!=1||!(in>>ni>>nh>>no)||
+ if(!(in>>magic>>version)||magic!="NEURALFORGE_TRAINING"||(version!=1&&version!=2)||!(in>>ni>>nh>>no)||
     ni<1||nh<1||no<1||ni>4096||nh>4096||no>4096||ni*nh+nh+nh*no+no>262144)
   throw std::runtime_error("Invalid checkpoint header or parameter budget");
  const auto a=static_cast<std::size_t>(ni),b=static_cast<std::size_t>(nh),c=static_cast<std::size_t>(no);
@@ -94,10 +88,16 @@ TrainableMLP TrainableMLP::load_checkpoint(const std::filesystem::path& path) {
  const auto tick=std::stoull(step,&consumed);
  if(consumed!=step.size()||tick>std::numeric_limits<std::size_t>::max())throw std::runtime_error("Invalid checkpoint timestep");
  state.timestep=static_cast<std::size_t>(tick);
- std::string preprocessing;if(!(in>>preprocessing)||preprocessing!="identity")throw std::runtime_error("Unsupported preprocessing");
+ std::string preprocessing;if(!(in>>preprocessing)||(version==1?preprocessing!="identity":preprocessing!="standardize"))throw std::runtime_error("Unsupported preprocessing");
  FeatureSchema schema;schema.features.resize(a);schema.classes.resize(c);
  for(auto& s:schema.features)if(!(in>>std::quoted(s)))throw std::runtime_error("Missing feature schema");
  for(auto& s:schema.classes)if(!(in>>std::quoted(s)))throw std::runtime_error("Missing class schema");
+ Standardization normalization;
+ if(version==2) {
+  normalization.mean.resize(a);normalization.scale.resize(a);
+  for(auto* values:{&normalization.mean,&normalization.scale})for(auto& value:*values)
+   if(!(in>>value))throw std::runtime_error("Missing checkpoint preprocessing");
+ }
  std::array<Tensor,4> p{Tensor({a,b}),Tensor({b}),Tensor({b,c}),Tensor({c})};
  for(auto& t:p)read_tensor(in,t);
  for(const auto& t:p)state.first.emplace_back(t.shape());
@@ -105,7 +105,7 @@ TrainableMLP TrainableMLP::load_checkpoint(const std::filesystem::path& path) {
  for(auto& t:state.first)read_tensor(in,t);
  for(auto& t:state.second)read_tensor(in,t,true);
  std::string trailing;if(in>>trailing)throw std::runtime_error("Unexpected checkpoint trailing data");
- TrainableMLP result(MLPModel::from_parameters(p),state.learning_rate,std::move(schema));
+ TrainableMLP result(MLPModel::from_parameters(p),state.learning_rate,std::move(schema),std::move(normalization));
  result.optimizer_.restore(state,result.parameters_);return result;
 }
 }

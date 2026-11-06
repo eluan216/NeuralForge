@@ -2,7 +2,7 @@
 #include <optional>
 #include <string>
 #include <vector>
-#include "neuralforge/model.hpp"
+#include "neuralforge/artifact.hpp"
 namespace neuralforge {
 struct LabeledBatch {Tensor inputs;std::vector<std::size_t> labels;};
 struct GatePolicy {
@@ -23,15 +23,18 @@ struct AuditEvent {
  std::size_t sequence;std::string action;std::uint64_t before,after;GateReport report;
 };
 class AdaptiveDeployment {
- MLPModel active_;
- std::optional<MLPModel> previous_;
+ InferenceArtifact active_;
+ std::optional<InferenceArtifact> previous_;
  std::vector<AuditEvent> audit_;
 public:
  explicit AdaptiveDeployment(MLPModel active);
- [[nodiscard]] const MLPModel& active() const noexcept {return active_;}
+ explicit AdaptiveDeployment(InferenceArtifact active);
+ [[nodiscard]] const InferenceArtifact& active() const noexcept {return active_;}
  [[nodiscard]] const std::vector<AuditEvent>& audit() const noexcept {return audit_;}
  /// Caller must supply untouched, representative recent and reference holdouts.
  /// Promotion evaluates both cohorts internally and requires explicit approval.
+ GateReport consider(const InferenceArtifact& candidate,const LabeledBatch& recent,const LabeledBatch& reference,
+                     GatePolicy policy={},bool approved=false);
  GateReport consider(const MLPModel& candidate,const LabeledBatch& recent,const LabeledBatch& reference,
                      GatePolicy policy={},bool approved=false);
  bool rollback(bool approved=false);

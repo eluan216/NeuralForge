@@ -1,12 +1,12 @@
 #include "neuralforge/c_api.h"
-#include "neuralforge/model.hpp"
+#include "neuralforge/artifact.hpp"
 #include "neuralforge/kernels.hpp"
 #include <cstdio>
 #include <exception>
 #include <new>
 #include <span>
-struct nf_model {neuralforge::MLPModel value;};
-struct nf_workspace {neuralforge::InferenceWorkspace value;};
+struct nf_model {neuralforge::InferenceArtifact value;};
+struct nf_workspace {neuralforge::ArtifactWorkspace value;};
 namespace {
 thread_local char error_text[256]{};
 nf_status fail(nf_status status,const char* text) noexcept {std::snprintf(error_text,sizeof(error_text),"%s",text);return status;}
@@ -26,12 +26,15 @@ nf_status nf_model_load(const char* path,nf_model** out){
  if(!out) {return fail(NF_INVALID_ARGUMENT,"Output handle is null");}
  *out=nullptr;
  if(!path)return fail(NF_INVALID_ARGUMENT,"Model path is null");
- return guarded([&]{*out=new nf_model{neuralforge::MLPModel::load(path)};});
+ return guarded([&]{*out=new nf_model{neuralforge::InferenceArtifact::load(path)};});
 }
 void nf_model_destroy(nf_model* model){delete model;clear();}
 size_t nf_model_inputs(const nf_model* model){return model?model->value.input_features():0;}
 size_t nf_model_outputs(const nf_model* model){return model?model->value.output_features():0;}
 size_t nf_model_parameter_bytes(const nf_model* model){return model?model->value.parameter_bytes():0;}
+size_t nf_model_preprocessing_bytes(const nf_model* model){return model?model->value.preprocessing_bytes():0;}
+const char* nf_model_feature_name(const nf_model* model,size_t index){return model&&index<model->value.schema().features.size()?model->value.schema().features[index].c_str():nullptr;}
+const char* nf_model_class_name(const nf_model* model,size_t index){return model&&index<model->value.schema().classes.size()?model->value.schema().classes[index].c_str():nullptr;}
 nf_status nf_workspace_create(const nf_model* model,nf_workspace** out){
  if(!out) {return fail(NF_INVALID_ARGUMENT,"Output handle is null");}
  *out=nullptr;

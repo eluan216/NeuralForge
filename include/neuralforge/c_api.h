@@ -25,6 +25,10 @@ NF_API void nf_model_destroy(nf_model* model);
 NF_API size_t nf_model_inputs(const nf_model* model);
 NF_API size_t nf_model_outputs(const nf_model* model);
 NF_API size_t nf_model_parameter_bytes(const nf_model* model);
+NF_API size_t nf_model_preprocessing_bytes(const nf_model* model);
+/* Names belong to the model and remain valid until it is destroyed. */
+NF_API const char* nf_model_feature_name(const nf_model* model,size_t index);
+NF_API const char* nf_model_class_name(const nf_model* model,size_t index);
 NF_API nf_status nf_workspace_create(const nf_model* model,nf_workspace** out);
 NF_API void nf_workspace_destroy(nf_workspace* workspace);
 NF_API size_t nf_workspace_bytes(const nf_workspace* workspace);
