@@ -1,0 +1,13 @@
+NEURALFORGE_BUNDLE 1
+2 2
+standardize
+"x" "y"
+"a" "b"
+0 0
+1 1
+NEURALFORGE_MLP 1
+2 2 2
+1 0 0 1
+0 0
+1 0 0 1
+0 0

@@ -1,0 +1,46 @@
+name: Parity and comparative evidence
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: evidence-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  same-weight-comparison:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      OMP_NUM_THREADS: 1
+      OPENBLAS_NUM_THREADS: 1
+      MKL_NUM_THREADS: 1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build release shared library
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DNEURALFORGE_BUILD_TESTS=OFF -DNEURALFORGE_BUILD_BENCHMARKS=OFF
+          cmake --build build --parallel 2
+      - name: Install verification dependencies (not runtime dependencies)
+        run: |
+          python -m pip install numpy onnx onnxruntime
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Verify exported PyTorch and C++ agreement
+        run: python python/eval_suite.py --skip-bench --retrain
+      - name: Native and Python-boundary measurements
+        run: |
+          mkdir -p artifacts
+          git rev-parse HEAD > artifacts/source-commit.txt
+          c++ --version > artifacts/compiler.txt
+          ./build/bin/neuralforge_latency models/toy_classifier.nfmodel > artifacts/native-latency.json
+          python python/benchmark_compare.py --library build/lib/libneuralforge.so --output artifacts/comparison.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: comparative-evidence
+          path: artifacts/
+          retention-days: 30

@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.20)
+project(NeuralForgeConsumer LANGUAGES C CXX)
+find_package(NeuralForge 0.10 CONFIG REQUIRED)
+add_executable(embed ../c_inference.c)
+target_link_libraries(embed PRIVATE NeuralForge::neuralforge)
+set_target_properties(embed PROPERTIES LINKER_LANGUAGE CXX)

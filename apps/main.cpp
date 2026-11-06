@@ -5,7 +5,7 @@
 int main() {
     using namespace neuralforge;
 
-    std::cout << "NeuralForge v0.2 – tensor + matrix multiplication demo\n\n";
+    std::cout << "NeuralForge v0.10 – tensor + matrix multiplication demo\n\n";
 
     Tensor A{{1.f, 2.f, 3.f},
              {4.f, 5.f, 6.f}};
