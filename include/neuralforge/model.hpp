@@ -28,6 +28,7 @@ public:
     /// Share immutable models across threads; use one workspace per concurrent call.
     void predict_proba_into(std::span<const float> inputs,std::size_t batch,
                             std::span<float> outputs,InferenceWorkspace& workspace) const;
+    [[nodiscard]] std::size_t parameter_bytes() const noexcept {return (w1_.size()+b1_.size()+w2_.size()+b2_.size())*sizeof(float);}
     /// Stable content identifier, not a cryptographic signature.
     [[nodiscard]] std::uint64_t fingerprint() const noexcept;
     static MLPModel load(const std::filesystem::path& path);

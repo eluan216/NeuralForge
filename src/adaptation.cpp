@@ -1,35 +1,56 @@
 #include "neuralforge/adaptation.hpp"
 #include <cmath>
+#include <algorithm>
 #include <stdexcept>
 #include <utility>
 namespace neuralforge {
 namespace {
-double accuracy(const MLPModel& model,const LabeledBatch& data,std::size_t minimum) {
+struct Metrics {double accuracy;std::vector<double> recall;};
+Metrics measure(const MLPModel& model,const LabeledBatch& data,std::size_t minimum,bool require_coverage=false) {
  if(data.inputs.ndim()!=2||data.inputs.shape()[0]!=data.labels.size()||data.labels.size()<minimum)
   throw std::invalid_argument("Evaluation needs enough labelled rows with matching shape");
  for(auto label:data.labels)if(label>=model.output_features())throw std::invalid_argument("Evaluation label outside class range");
- const auto predictions=model.predict(data.inputs);std::size_t correct=0;
- for(std::size_t i=0;i<predictions.size();++i)correct+=predictions[i]==data.labels[i];
- return static_cast<double>(correct)/static_cast<double>(predictions.size());
+ Tensor probabilities({data.labels.size(),model.output_features()});
+ auto workspace=model.prepare();
+ model.predict_proba_into({data.inputs.data(),data.inputs.size()},data.labels.size(),{probabilities.data(),probabilities.size()},workspace);
+ std::size_t correct=0;std::vector<std::size_t> counts(model.output_features()),hits(model.output_features());
+ for(std::size_t i=0;i<data.labels.size();++i) {
+  std::size_t best=0;
+  for(std::size_t j=1;j<model.output_features();++j)if(probabilities.at(i,j)>probabilities.at(i,best))best=j;
+  ++counts[data.labels[i]];
+  if(best==data.labels[i]){++correct;++hits[data.labels[i]];}
+ }
+ Metrics metrics{static_cast<double>(correct)/data.labels.size(),{}};
+ for(std::size_t j=0;j<counts.size();++j) {
+  if(require_coverage&&!counts[j])throw std::invalid_argument("Reference holdout must include every class");
+  metrics.recall.push_back(counts[j]?static_cast<double>(hits[j])/counts[j]:0);
+ }
+ return metrics;
 }
 }
 AdaptiveDeployment::AdaptiveDeployment(MLPModel active):active_(std::move(active)) {(void)active_.prepare();}
 GateReport AdaptiveDeployment::consider(const MLPModel& candidate,const LabeledBatch& recent,
                                         const LabeledBatch& reference,GatePolicy policy,bool approved) {
  if(!std::isfinite(policy.minimum_gain)||!std::isfinite(policy.maximum_retention_drop)||
-    policy.minimum_gain<0||policy.minimum_gain>1||policy.maximum_retention_drop<0||policy.maximum_retention_drop>1||policy.minimum_samples==0)
+    policy.minimum_gain<0||policy.minimum_gain>1||policy.maximum_retention_drop<0||policy.maximum_retention_drop>1||policy.minimum_samples==0||!std::isfinite(policy.maximum_class_recall_drop)||policy.maximum_class_recall_drop<0||
+    policy.maximum_class_recall_drop>1||!policy.maximum_parameter_bytes||!policy.maximum_scratch_bytes)
   throw std::invalid_argument("Invalid promotion policy");
  if(candidate.input_features()!=active_.input_features()||candidate.output_features()!=active_.output_features())
   throw std::invalid_argument("Candidate input and class contracts must match active model");
  GateReport report;
- report.active_recent=accuracy(active_,recent,policy.minimum_samples);
- report.candidate_recent=accuracy(candidate,recent,policy.minimum_samples);
- report.active_reference=accuracy(active_,reference,policy.minimum_samples);
- report.candidate_reference=accuracy(candidate,reference,policy.minimum_samples);
+ const auto ar=measure(active_,recent,policy.minimum_samples),cr=measure(candidate,recent,policy.minimum_samples);
+ const auto af=measure(active_,reference,policy.minimum_samples,true),cf=measure(candidate,reference,policy.minimum_samples,true);
+ report.active_recent=ar.accuracy;report.candidate_recent=cr.accuracy;
+ report.active_reference=af.accuracy;report.candidate_reference=cf.accuracy;
+ for(std::size_t j=0;j<af.recall.size();++j)report.worst_reference_recall_drop=std::max(report.worst_reference_recall_drop,af.recall[j]-cf.recall[j]);
+ report.candidate_parameter_bytes=candidate.parameter_bytes();
+ report.candidate_scratch_bytes=candidate.prepare().scratch_bytes();
+ report.resources_ok=report.candidate_parameter_bytes<=policy.maximum_parameter_bytes&&report.candidate_scratch_bytes<=policy.maximum_scratch_bytes;
  report.eligible=report.candidate_recent-report.active_recent>=policy.minimum_gain &&
-  report.active_reference-report.candidate_reference<=policy.maximum_retention_drop;
+  report.active_reference-report.candidate_reference<=policy.maximum_retention_drop&&
+  report.worst_reference_recall_drop<=policy.maximum_class_recall_drop&&report.resources_ok;
  report.promoted=report.eligible&&approved;
- report.reason=!report.eligible?"Candidate failed recent-gain or retention criteria":
+ report.reason=!report.eligible?"Candidate failed gain, overall/per-class retention, or resource criteria":
   approved?"Candidate passed cohorts and was explicitly approved":"Candidate passed cohorts; explicit approval required";
  const auto before=active_.fingerprint(),after=report.promoted?candidate.fingerprint():before;
  // Stage all allocating state before changing the deployment.

@@ -24,6 +24,7 @@ NF_API nf_status nf_model_load(const char* path,nf_model** out);
 NF_API void nf_model_destroy(nf_model* model);
 NF_API size_t nf_model_inputs(const nf_model* model);
 NF_API size_t nf_model_outputs(const nf_model* model);
+NF_API size_t nf_model_parameter_bytes(const nf_model* model);
 NF_API nf_status nf_workspace_create(const nf_model* model,nf_workspace** out);
 NF_API void nf_workspace_destroy(nf_workspace* workspace);
 NF_API size_t nf_workspace_bytes(const nf_workspace* workspace);

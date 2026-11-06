@@ -73,7 +73,9 @@ jobs:
           ./consumer/embed models/toy_classifier.nfmodel
 
       - name: Native latency report
-        run: ./build/bin/neuralforge_latency models/toy_classifier.nfmodel
+        run: |
+          ./build/bin/neuralforge_latency models/toy_classifier.nfmodel
+          cat build/adapt-artifacts/report.json
 
       - name: Save synthetic adaptation audit
         uses: actions/upload-artifact@v4

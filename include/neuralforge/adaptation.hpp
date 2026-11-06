@@ -5,10 +5,19 @@
 #include "neuralforge/model.hpp"
 namespace neuralforge {
 struct LabeledBatch {Tensor inputs;std::vector<std::size_t> labels;};
-struct GatePolicy {double minimum_gain=0.02;double maximum_retention_drop=0.01;std::size_t minimum_samples=20;};
+struct GatePolicy {
+ double minimum_gain=0.02;
+ double maximum_retention_drop=0.01;
+ std::size_t minimum_samples=20;
+ double maximum_class_recall_drop=0.05;
+ std::size_t maximum_parameter_bytes=4*1024*1024;
+ std::size_t maximum_scratch_bytes=256*1024;
+};
 struct GateReport {
  double active_recent{},candidate_recent{},active_reference{},candidate_reference{};
- bool eligible=false,promoted=false;std::string reason;
+ double worst_reference_recall_drop{};
+ std::size_t candidate_parameter_bytes{},candidate_scratch_bytes{};
+ bool resources_ok=false,eligible=false,promoted=false;std::string reason;
 };
 struct AuditEvent {
  std::size_t sequence;std::string action;std::uint64_t before,after;GateReport report;

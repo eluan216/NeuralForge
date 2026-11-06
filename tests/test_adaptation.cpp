@@ -50,3 +50,13 @@ TEST(DriftMonitor, RequiresLabelsAndTwoWindowsAndDoesNotActOnModels) {
  EXPECT_THROW(ErrorDriftMonitor(0),std::invalid_argument);
  EXPECT_THROW(ErrorDriftMonitor(4,0),std::invalid_argument);
 }
+
+TEST(Adaptation, EnforcesDeploymentMemoryBudgetAndClassCoverage) {
+ AdaptiveDeployment deployment(nf_test::identity(true));GatePolicy policy{0.1,0.0,10};
+ policy.maximum_scratch_bytes=1;
+ const auto report=deployment.consider(nf_test::identity(),nf_test::cohort(),nf_test::cohort(),policy,true);
+ EXPECT_FALSE(report.resources_ok);
+ EXPECT_FALSE(report.promoted);
+ auto missing=nf_test::cohort();for(auto& label:missing.labels)label=0;
+ EXPECT_THROW(deployment.consider(nf_test::identity(),nf_test::cohort(),missing),std::invalid_argument);
+}

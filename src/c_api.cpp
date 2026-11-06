@@ -31,6 +31,7 @@ nf_status nf_model_load(const char* path,nf_model** out){
 void nf_model_destroy(nf_model* model){delete model;clear();}
 size_t nf_model_inputs(const nf_model* model){return model?model->value.input_features():0;}
 size_t nf_model_outputs(const nf_model* model){return model?model->value.output_features():0;}
+size_t nf_model_parameter_bytes(const nf_model* model){return model?model->value.parameter_bytes():0;}
 nf_status nf_workspace_create(const nf_model* model,nf_workspace** out){
  if(!out) {return fail(NF_INVALID_ARGUMENT,"Output handle is null");}
  *out=nullptr;
