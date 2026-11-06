@@ -1,0 +1,21 @@
+name: Real sensor evidence
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: real-sensor-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  participant-held-out:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Acquire official dataset and record checksum
+        run: python python/sensor_benchmark.py --download-only --cache "$RUNNER_TEMP/uci-har"
