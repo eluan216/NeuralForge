@@ -60,3 +60,22 @@ TEST(Adaptation, EnforcesDeploymentMemoryBudgetAndClassCoverage) {
  auto missing=nf_test::cohort();for(auto& label:missing.labels)label=0;
  EXPECT_THROW(deployment.consider(nf_test::identity(),nf_test::cohort(),missing),std::invalid_argument);
 }
+
+TEST(Adaptation, ProtectsMinorityRecallWhenAggregateAccuracyBarelyDrops) {
+ AdaptiveDeployment deployment(nf_test::identity());
+ auto p=nf_test::identity().parameters();
+ for(auto& t:p)for(std::size_t i=0;i<t.size();++i)t.at(i)=0;
+ p[3].at(0)=1;
+ const auto candidate=MLPModel::from_parameters(p);
+ auto recent=nf_test::cohort();for(auto& label:recent.labels)label=0;
+ LabeledBatch reference{Tensor({100,2}),std::vector<std::size_t>(100,0)};
+ for(std::size_t i=0;i<100;++i){reference.inputs.at(i,0)=2;reference.inputs.at(i,1)=1;}
+ reference.inputs.at(99,0)=1;reference.inputs.at(99,1)=2;reference.labels[99]=1;
+ GatePolicy policy{0.1,0.02,20};
+ const auto report=deployment.consider(candidate,recent,reference,policy,true);
+ EXPECT_NEAR(report.active_reference-report.candidate_reference,0.01,1e-8);
+ EXPECT_DOUBLE_EQ(report.worst_reference_recall_drop,1);
+ EXPECT_FALSE(report.eligible);
+ policy.maximum_class_recall_drop=1;
+ EXPECT_TRUE(deployment.consider(candidate,recent,reference,policy).eligible);
+}
