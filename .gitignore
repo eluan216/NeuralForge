@@ -12,3 +12,5 @@ __pycache__/
 *.tmp-*
 /models/cpp_trained_classifier.nfmodel
 /benchmarks/results/baseline_*/
+
+/.cache/

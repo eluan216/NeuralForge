@@ -106,8 +106,9 @@ jobs:
         run: ctest --test-dir build --output-on-failure --parallel 2
       - name: Build in-memory model parser fuzzer
         run: |
-          clang++-18 -std=c++20 -g -O1 -fsanitize=fuzzer,address,undefined -Iinclude fuzz/model_loader.cpp src/tensor.cpp src/matmul.cpp src/nn_ops.cpp src/model.cpp src/kernels.cpp -o build/model_fuzz
+          clang++-18 -std=c++20 -g -O1 -fsanitize=fuzzer,address,undefined -Iinclude fuzz/model_loader.cpp src/tensor.cpp src/matmul.cpp src/nn_ops.cpp src/model.cpp src/kernels.cpp src/schema.cpp src/artifact.cpp -o build/model_fuzz
           mkdir -p build/fuzz-corpus
           cp models/toy_classifier.nfmodel build/fuzz-corpus/valid-model
+          cp tests/fixtures/identity.nfbundle build/fuzz-corpus/valid-bundle
       - name: Fuzz smoke (bounded, not exhaustive)
         run: ./build/model_fuzz -runs=2000 -max_len=4096 -timeout=10 -rss_limit_mb=512 build/fuzz-corpus

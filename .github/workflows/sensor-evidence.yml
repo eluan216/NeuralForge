@@ -12,6 +12,10 @@ jobs:
   participant-held-out:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    env:
+      OMP_NUM_THREADS: 1
+      OPENBLAS_NUM_THREADS: 1
+      MKL_NUM_THREADS: 1
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -19,3 +23,23 @@ jobs:
           python-version: "3.12"
       - name: Acquire official dataset and record checksum
         run: python python/sensor_benchmark.py --download-only --cache "$RUNNER_TEMP/uci-har"
+      - name: Build native trainer and deployable shared library
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DNEURALFORGE_BUILD_TESTS=OFF -DNEURALFORGE_BUILD_BENCHMARKS=OFF
+          cmake --build build --parallel 2
+      - name: Install evaluation dependencies only
+        run: |
+          python -m pip install numpy scikit-learn
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Verify participant partition rules
+        run: python -m unittest discover -s python -p test_sensor_protocol.py
+      - name: Run fixed protocol and score the official test cohort
+        run: |
+          python python/sensor_benchmark.py --cache "$RUNNER_TEMP/uci-har" --trainer build/bin/neuralforge_train_dataset --library build/lib/libneuralforge.so --output artifacts/real-sensor
+          git rev-parse HEAD > artifacts/real-sensor/source-commit.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: real-sensor-evidence
+          path: artifacts/real-sensor/
+          retention-days: 30

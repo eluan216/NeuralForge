@@ -80,6 +80,8 @@ target_link_libraries(neuralforge_train_classifier PRIVATE neuralforge)
 
 add_executable(neuralforge_adapt_demo apps/adapt_demo.cpp)
 target_link_libraries(neuralforge_adapt_demo PRIVATE neuralforge)
+add_executable(neuralforge_train_dataset apps/train_dataset.cpp)
+target_link_libraries(neuralforge_train_dataset PRIVATE neuralforge)
 add_executable(neuralforge_latency apps/latency.cpp)
 target_link_libraries(neuralforge_latency PRIVATE neuralforge)
 add_executable(neuralforge_c_example examples/c_inference.c)
@@ -125,6 +127,15 @@ if(NEURALFORGE_BUILD_TESTS)
     target_link_libraries(neuralforge_allocation_test PRIVATE neuralforge)
     add_test(NAME PreparedNoAllocations COMMAND neuralforge_allocation_test "${CMAKE_SOURCE_DIR}/models/toy_classifier.nfmodel")
     add_test(NAME CEmbedding COMMAND neuralforge_c_example "${CMAKE_SOURCE_DIR}/models/toy_classifier.nfmodel")
+    add_test(NAME DatasetTrainingSmoke COMMAND neuralforge_train_dataset
+     --train "${CMAKE_SOURCE_DIR}/tests/fixtures/train.nfdata"
+     --validation "${CMAKE_SOURCE_DIR}/tests/fixtures/validation.nfdata"
+     --output "${CMAKE_BINARY_DIR}/dataset-cli-artifacts" --epochs 2 --hidden 4 --batch 4)
+    add_test(NAME DatasetTrainingInvalid COMMAND neuralforge_train_dataset
+     --train "${CMAKE_SOURCE_DIR}/tests/fixtures/invalid.nfdata"
+     --validation "${CMAKE_SOURCE_DIR}/tests/fixtures/validation.nfdata"
+     --output "${CMAKE_BINARY_DIR}/invalid-dataset-artifacts")
+    set_tests_properties(DatasetTrainingInvalid PROPERTIES WILL_FAIL TRUE)
     add_test(NAME ControlledAdaptation COMMAND neuralforge_adapt_demo --output "${CMAKE_BINARY_DIR}/adapt-artifacts")
     if(UNIX)
     add_test(
