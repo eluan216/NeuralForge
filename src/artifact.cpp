@@ -114,10 +114,12 @@ void InferenceArtifact::save(const std::filesystem::path& path) const {
   out<<std::setprecision(std::numeric_limits<float>::max_digits10);
   out<<"NEURALFORGE_BUNDLE 1\n"<<input_features()<<' '<<output_features()<<"\nstandardize\n";
   for(const auto* names:{&schema_.features,&schema_.classes}) {
-   for(const auto& name:*names)out<<std::quoted(name)<<' ';out<<'\n';
+   for(const auto& name:*names) {out<<std::quoted(name)<<' ';}
+   out<<'\n';
   }
   for(const auto* values:{&preprocessing_.mean,&preprocessing_.scale}) {
-   for(float value:*values)out<<value<<' ';out<<'\n';
+   for(float value:*values) {out<<value<<' ';}
+   out<<'\n';
   }
   out<<"NEURALFORGE_MLP 1\n"<<input_features()<<' '<<model_.hidden_features()<<' '<<output_features()<<'\n';
   for(const auto& tensor:model_.parameters()){for(std::size_t i=0;i<tensor.size();++i)out<<tensor.at(i)<<' ';out<<'\n';}

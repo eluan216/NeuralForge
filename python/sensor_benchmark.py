@@ -220,6 +220,7 @@ def evaluate(args, path, digest):
                            "official_test_rows": len(y_test), "additional_preprocessing": "training-only population mean/std; constant scale=1",
                            "model_selection": "earliest best validation macro-F1 over fixed 40 epochs; no test tuning",
                            "seed": 7, "hidden": 32, "learning_rate": 0.003, "batch": 128},
+              "model_bundle_sha256": hashlib.sha256((output / "model.nfbundle").read_bytes()).hexdigest(),
               "selection": {"selected_epoch": training["selected_epoch"], "validation_macro_f1": training["validation_macro_f1"]},
               "models": models, "parity": {"max_abs_probability_error": float(np.max(np.abs(probability-reference_probability))),
                                           "class_mismatches": mismatches, "rtol": 2e-4, "atol": 2e-5},
@@ -243,16 +244,59 @@ def evaluate(args, path, digest):
         shutil.copyfile(notice, output / "DATASET_NOTICE.md")
     print("REAL_SENSOR_REPORT=" + json.dumps(report), flush=True)
 
+def verify_existing(args, path):
+    import csv
+    import platform
+    import numpy as np
+    directory = args.verify_existing
+    report = json.loads((directory / "report.json").read_text())
+    bundle = directory / "model.nfbundle"
+    digest = hashlib.sha256(bundle.read_bytes()).hexdigest()
+    if digest != report["model_bundle_sha256"]:
+        raise AssertionError("Transferred bundle checksum mismatch")
+    training = json.loads((directory / "training.json").read_text())
+    with selected_zip(path) as archive:
+        x = np.loadtxt(io.StringIO(member(archive, "test/X_test.txt")), dtype="float32")
+        labels = np.loadtxt(io.StringIO(member(archive, "test/y_test.txt")), dtype="int64") - 1
+        subjects = np.loadtxt(io.StringIO(member(archive, "test/subject_test.txt")), dtype="int64")
+    with (directory / "test_predictions.csv").open(newline="") as source:
+        rows = list(csv.DictReader(source))
+    if len(rows) != len(labels) or any(int(row["test_row"]) != i or int(row["true_class_1based"])-1 != int(labels[i]) or
+                                     int(row["anonymous_subject_id"]) != int(subjects[i]) for i, row in enumerate(rows)):
+        raise AssertionError("Cross-architecture test row alignment failed")
+    expected = np.asarray([[float(row["probability_" + name]) for name in training["class_names"]] for row in rows], dtype="float32")
+    actual, names, classes = cpp_probabilities(args.library, bundle, x)
+    if names != training["feature_names"] or classes != training["class_names"]:
+        raise AssertionError("Transferred semantic schema mismatch")
+    mismatches = int(np.count_nonzero(actual.argmax(1) != expected.argmax(1)))
+    if mismatches or not np.allclose(actual, expected, rtol=2e-4, atol=2e-5):
+        raise AssertionError("Cross-architecture output agreement failed")
+    result = {"machine": platform.machine(), "platform": platform.platform(), "bundle_sha256": digest,
+              "source": "x86-64-trained artifact; no retraining on this runner", "test_rows": len(labels),
+              "class_mismatches": mismatches, "max_abs_probability_error": float(np.max(np.abs(actual-expected))),
+              "accuracy": float(np.mean(actual.argmax(1)==labels)), "rtol": 2e-4, "atol": 2e-5,
+              "scope": "Hosted native ARM64 runtime, not a Raspberry Pi or physical sensor validation"}
+    args.cross_output.parent.mkdir(parents=True, exist_ok=True)
+    args.cross_output.write_text(json.dumps(result, indent=2) + "\n")
+    print("CROSS_ARCHITECTURE_REPORT=" + json.dumps(result), flush=True)
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cache", type=Path, default=Path(".cache/uci-har"))
     parser.add_argument("--download-only", action="store_true")
     parser.add_argument("--trainer", type=Path)
     parser.add_argument("--library", type=Path)
+    parser.add_argument("--verify-existing", type=Path)
+    parser.add_argument("--cross-output", type=Path, default=Path("artifacts/arm64-parity.json"))
     parser.add_argument("--output", type=Path, default=Path("artifacts/real-sensor"))
     args = parser.parse_args()
     path, digest = acquire(args.cache)
     if args.download_only:
+        return
+    if args.verify_existing is not None:
+        if args.library is None or not args.library.is_file():
+            parser.error("provide a native --library for bundle verification")
+        verify_existing(args, path)
         return
     if args.trainer is None or args.library is None or not args.trainer.is_file() or not args.library.is_file():
         parser.error("provide --trainer and --library from a shared Release build")

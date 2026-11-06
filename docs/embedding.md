@@ -40,4 +40,16 @@ Supported execution evidence currently covers Linux x86-64 and hosted Linux ARM6
 
 ## Allocation evidence
 
-tests/test_allocations.cpp overrides ordinary and aligned C++ allocation operators, prepares both interfaces first, and checks 2,000 inference calls. It measures C++ new/new[] calls, not every possible operating-system or C-library allocation. Input/output storage is allocated outside the measured region.
+tests/test_allocations.cpp overrides ordinary and aligned C++ allocation operators, prepares both interfaces first, and checks 4,000 inference calls. It measures C++ new/new[] calls, not every possible operating-system or C-library allocation. Input/output storage is allocated outside the measured region.
+
+## Deployable bundles and semantic metadata
+
+InferenceArtifact couples weights with ordered feature/class names and per-feature mean/scale. The C API's nf_model_load accepts both legacy .nfmodel files (identity preprocessing and generated default names) and .nfbundle files (stored metadata and preprocessing).
+
+For bundles, pass raw feature values in the declared order. Query nf_model_feature_name and nf_model_class_name to inspect meaning. Returned strings belong to the model and remain valid until destruction. nf_model_preprocessing_bytes reports the float mean/scale payload, excluding string/allocator bookkeeping.
+
+An ArtifactWorkspace adds one input-width normalization vector only when standardization is nonidentity. Its scratch byte count includes that vector plus the dense hidden workspace. Valid raw-input calls do not allocate; scalar conversion uses the bundle's frozen statistics. The 4,000-call allocation check covers both C++ interfaces and both legacy/bundled C paths.
+
+Bundle loading is capped at 16 MiB and validates names, dimensions, finite statistics, positive scales and embedded model consistency. Input/output metadata dimensions are capped at 4,096; bundled weights are capped at 262,144 parameters. Load-time peak memory includes parsing and model copies and is not equal to prepared inference scratch storage.
+
+Bundle fingerprints include semantic names and preprocessing as well as model weights. They remain noncryptographic content IDs. AdaptiveDeployment now stores the full artifact, checks ordered feature/class equality before evaluation, and restores preprocessing/metadata during rollback.

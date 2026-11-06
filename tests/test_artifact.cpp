@@ -64,3 +64,15 @@ TEST(Artifact, ReadsLegacyIdentityCheckpoint) {
  auto model=TrainableMLP::load_checkpoint(path);EXPECT_EQ(model.steps(),0u);
  EXPECT_FLOAT_EQ(model.preprocessing().scale[0],1);std::filesystem::remove(path);
 }
+
+TEST(Artifact, RollbackRestoresPreprocessingAndSemanticIdentity) {
+ const FeatureSchema schema{{"x","y"},{"a","b"}};
+ InferenceArtifact original(nf_test::identity(true),schema,{{0,0},{1,1}});
+ InferenceArtifact candidate(nf_test::identity(),schema,{{0,0},{2,2}});
+ AdaptiveDeployment deployment(original);
+ EXPECT_TRUE(deployment.consider(candidate,nf_test::cohort(),nf_test::cohort(),{0.2,0,10},true).promoted);
+ EXPECT_EQ(deployment.active().fingerprint(),candidate.fingerprint());
+ EXPECT_TRUE(deployment.rollback(true));
+ EXPECT_EQ(deployment.active().fingerprint(),original.fingerprint());
+ EXPECT_FLOAT_EQ(deployment.active().preprocessing().scale[0],1);
+}

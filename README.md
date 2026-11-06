@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/eluan216/NeuralForge/actions/workflows/ci.yml/badge.svg)](https://github.com/eluan216/NeuralForge/actions/workflows/ci.yml)
 [![Comparative evidence](https://github.com/eluan216/NeuralForge/actions/workflows/verification.yml/badge.svg)](https://github.com/eluan216/NeuralForge/actions/workflows/verification.yml)
+[![Real sensor evidence](https://github.com/eluan216/NeuralForge/actions/workflows/sensor-evidence.yml/badge.svg)](https://github.com/eluan216/NeuralForge/actions/workflows/sensor-evidence.yml)
 [![MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **Small models. Local learning. Controlled updates.**
@@ -10,7 +11,7 @@ I’m building NeuralForge for C++ applications that need to run small classifie
 
 The core is **C++20**, with a **C11-compatible embedding API**. AVX2 and ARM NEON intrinsics accelerate the prepared inference path where supported. Python is used for export, parity verification and comparisons—not required by the deployed runtime.
 
-> This is an early, deliberately narrow implementation: two-layer float32 MLP classifiers. The included sensor example is synthetic. I do not claim general ONNX compatibility, microcontroller readiness, hard real-time guarantees, or a performance advantage over other runtimes.
+> This is an early, deliberately narrow implementation: two-layer float32 MLP classifiers. The controlled-shift demo is synthetic; a separate participant-held-out benchmark uses recorded smartphone sensor features. I do not claim general ONNX compatibility, microcontroller readiness, hard real-time guarantees, or a performance advantage over other runtimes.
 
 ## What makes this release useful
 
@@ -20,7 +21,8 @@ The core is **C++20**, with a **C11-compatible embedding API**. AVX2 and ARM NEO
 | Hardware dispatch | Runtime-guarded AVX2 on GCC/Clang x86; NEON on AArch64; selectable scalar fallback |
 | Native embedding | Opaque C handles, explicit lengths, thread-local errors and an installable CMake package |
 | Local training | Reverse-mode autograd, stable logits cross-entropy, SGD and Adam |
-| Checkpoint resume | Weights, Adam moments/timestep, feature/class names and identity preprocessing |
+| Checkpoint resume | Weights, Adam moments/timestep, semantic names and stored standardization; v1 identity checkpoints remain readable |
+| Deployment bundles | One artifact carries feature order, class names, preprocessing and weights; the C API accepts raw feature vectors |
 | Controlled updates | Recent-quality improvement, overall/per-class retention checks, resource budgets and explicit approval |
 | Rollback and audit | One previous active model and an in-process event log, with an exported report in the demo |
 | Evidence | GCC/Clang and native ARM64 CI; scalar sanitizers; allocation/lifetime tests; parser fuzz smoke; PyTorch/ONNX Runtime comparisons |
@@ -52,6 +54,22 @@ Read `artifacts/adaptation/report.json` for cohort results and the event sequenc
 
 [Adaptation contract and limitations →](docs/controlled-adaptation.md)
 
+## Real sensor evidence
+
+I also evaluate the native training/deployment path on **UCI Human Activity Recognition Using Smartphones**, separate from the simulated adaptation demo.
+
+| Fixed participant-held-out protocol | Test accuracy | Macro-F1 |
+| --- | ---: | ---: |
+| NeuralForge C++ 561→32→6 MLP | 94.20% | 94.14% |
+| Logistic regression baseline | 95.11% | 95.07% |
+| Majority baseline | 18.22% | 5.14% |
+
+The experiment fits on 16 participants, selects an epoch using five other training participants, and evaluates the official nine-participant test cohort: 2,947 rows. Additional standardization is fitted on the fitting participants only. The raw-input deployment bundle matches PyTorch's predicted classes on all test examples.
+
+The linear baseline is stronger here; I report it rather than claiming the neural model is best. These are publisher-provided engineered features, not an implemented raw-signal DSP pipeline or industrial field validation. This experiment does not adapt to the test subjects.
+
+[Protocol, pinned environment, full metrics and reproduction →](docs/real-sensor-evaluation.md)
+
 ## Prepare once, infer into your buffers
 
 ```cpp
@@ -69,7 +87,7 @@ model.predict_proba_into(input, 1, probabilities, workspace);
 
 The workspace holds `hidden_features * sizeof(float)` scratch bytes, independently of batch size. Weights, vector/object bookkeeping and caller input/output buffers are additional memory. A shared model is immutable; use a separate workspace for every concurrent call.
 
-Inputs must already use the expected feature order and preprocessing. Non-finite inputs, mismatched buffers, overlap and non-finite intermediate results are rejected. Outputs from a failed call must be discarded.
+The low-level MLP interface expects already-preprocessed values. For raw inputs, load an `InferenceArtifact` from a `.nfbundle`; it applies stored preprocessing and retains ordered feature/class names. Non-finite inputs, mismatched buffers, overlap and non-finite intermediate results are rejected. Outputs from a failed call must be discarded.
 
 [Memory, threading and C API details →](docs/embedding.md)
 
@@ -122,18 +140,19 @@ The original pure C++ classifier example remains available:
 
 Create the output directory first. For resumable application training, use `TrainableMLP`, `train_batch`, `save_checkpoint` and `load_checkpoint`. Checkpoints preserve Adam state by parameter order, not transient pointer addresses. A test compares resumed and uninterrupted updates exactly within the same build.
 
-A `.nfmodel` is an inference-only weight artifact. A `.nfcheckpoint` also contains optimizer state and feature/class names. The current checkpoint preprocessing contract is **identity**; applications must handle any external signal processing consistently.
+A `.nfmodel` is an inference-only weight artifact. A `.nfbundle` adds preprocessing and semantic names and is directly loadable by the C API. Version 2 `.nfcheckpoint` files preserve weights, Adam state, names and standardization for raw-input training; version 1 identity checkpoints remain readable. `learner.artifact()` produces a deployable bundle without losing preprocessing. Signal processing before the published feature vector remains the application’s responsibility.
 
 ## Verification and supported scope
 
 - Linux x86-64: GCC and Clang.
 - Linux ARM64: native runner exercising the NEON path; not Raspberry Pi board certification.
 - Scalar Debug build: AddressSanitizer, UndefinedBehaviorSanitizer and leak detection.
-- Prepared C++/C calls: a standalone allocation counter checks 2,000 calls.
+- Prepared C++/C calls: a standalone allocation counter checks 4,000 calls, including standardized bundle inference.
 - Training: graph-lifetime, checkpoint resume and atomic Adam-failure tests.
 - Deployment: approval, forgetting, class coverage, resource limits and rollback.
 - Model parser: a 2,000-input libFuzzer smoke run; not an exhaustive security audit.
 - Export: PyTorch parity and held-out agreement are checked separately from runtime timings.
+- Real sensor protocol: official participant separation, training-only additional preprocessing, validation selection and an untouched official test cohort; a second native ARM64 job checks the x86-trained bundle without retraining.
 
 Windows, macOS, bare-metal MCUs, GPU/NPU backends, quantization and physical-device power measurements are future work. This runtime currently supports Dense → ReLU → Dense → Softmax, not arbitrary networks or LLMs. The update gate is a library policy, not an authentication or safety-certification system.
 
@@ -153,7 +172,7 @@ docs/                Embedding, adaptation and evidence contracts
 
 ## Contribute
 
-I welcome reproducible bug reports, independent benchmark runs and focused integration improvements. Read [CONTRIBUTING.md](CONTRIBUTING.md). Useful next work includes real sensor datasets with documented licences, independent ARM-device measurements, checkpoint format evolution and additional output heads—each with tests and honest capability boundaries.
+I welcome reproducible bug reports, independent benchmark runs and focused integration improvements. Read [CONTRIBUTING.md](CONTRIBUTING.md). Useful next work includes independent physical-device measurements, other attributed real sensor tasks, further checkpoint-format validation and additional output heads—each with tests and honest capability boundaries.
 
 ## License
 
